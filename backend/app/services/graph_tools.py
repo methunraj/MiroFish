@@ -1,11 +1,11 @@
 """
-图谱检索工具服务
-封装图谱搜索、节点读取、边查询等工具，供Report Agent使用
+Graph Retrieval Tool Service
+Wraps graph search, node reading, edge query and other tools for use by the Report Agent
 
-核心检索工具（优化后）：
-1. InsightForge（深度洞察检索）- 最强大的混合检索，自动生成子问题并多维度检索
-2. PanoramaSearch（广度搜索）- 获取全貌，包括过期内容
-3. QuickSearch（简单搜索）- 快速检索
+Core retrieval tools (optimized):
+1. InsightForge (Deep Insight Retrieval) - The most powerful hybrid search, auto-generates sub-questions and searches across multiple dimensions
+2. PanoramaSearch (Breadth Search) - Gets the full picture, including expired content
+3. QuickSearch (Simple Search) - Fast retrieval
 """
 
 import time
@@ -23,13 +23,13 @@ logger = get_logger('mirofish.graph_tools')
 
 @dataclass
 class SearchResult:
-    """搜索结果"""
+    """Search result"""
     facts: List[str]
     edges: List[Dict[str, Any]]
     nodes: List[Dict[str, Any]]
     query: str
     total_count: int
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "facts": self.facts,
@@ -38,28 +38,28 @@ class SearchResult:
             "query": self.query,
             "total_count": self.total_count
         }
-    
+
     def to_text(self) -> str:
-        """转换为文本格式，供LLM理解"""
-        text_parts = [f"搜索查询: {self.query}", f"找到 {self.total_count} 条相关信息"]
-        
+        """Convert to text format for LLM understanding"""
+        text_parts = [f"Search query: {self.query}", f"Found {self.total_count} related items"]
+
         if self.facts:
-            text_parts.append("\n### 相关事实:")
+            text_parts.append("\n### Related facts:")
             for i, fact in enumerate(self.facts, 1):
                 text_parts.append(f"{i}. {fact}")
-        
+
         return "\n".join(text_parts)
 
 
 @dataclass
 class NodeInfo:
-    """节点信息"""
+    """Node information"""
     uuid: str
     name: str
     labels: List[str]
     summary: str
     attributes: Dict[str, Any]
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "uuid": self.uuid,
@@ -68,16 +68,16 @@ class NodeInfo:
             "summary": self.summary,
             "attributes": self.attributes
         }
-    
+
     def to_text(self) -> str:
-        """转换为文本格式"""
-        entity_type = next((l for l in self.labels if l not in ["Entity", "Node"]), "未知类型")
-        return f"实体: {self.name} (类型: {entity_type})\n摘要: {self.summary}"
+        """Convert to text format"""
+        entity_type = next((l for l in self.labels if l not in ["Entity", "Node"]), "Unknown type")
+        return f"Entity: {self.name} (Type: {entity_type})\nSummary: {self.summary}"
 
 
 @dataclass
 class EdgeInfo:
-    """边信息"""
+    """Edge information"""
     uuid: str
     name: str
     fact: str
@@ -85,12 +85,12 @@ class EdgeInfo:
     target_node_uuid: str
     source_node_name: Optional[str] = None
     target_node_name: Optional[str] = None
-    # 时间信息
+    # Time information
     created_at: Optional[str] = None
     valid_at: Optional[str] = None
     invalid_at: Optional[str] = None
     expired_at: Optional[str] = None
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "uuid": self.uuid,
@@ -105,53 +105,53 @@ class EdgeInfo:
             "invalid_at": self.invalid_at,
             "expired_at": self.expired_at
         }
-    
+
     def to_text(self, include_temporal: bool = False) -> str:
-        """转换为文本格式"""
+        """Convert to text format"""
         source = self.source_node_name or self.source_node_uuid[:8]
         target = self.target_node_name or self.target_node_uuid[:8]
-        base_text = f"关系: {source} --[{self.name}]--> {target}\n事实: {self.fact}"
-        
+        base_text = f"Relationship: {source} --[{self.name}]--> {target}\nFact: {self.fact}"
+
         if include_temporal:
-            valid_at = self.valid_at or "未知"
-            invalid_at = self.invalid_at or "至今"
-            base_text += f"\n时效: {valid_at} - {invalid_at}"
+            valid_at = self.valid_at or "Unknown"
+            invalid_at = self.invalid_at or "Present"
+            base_text += f"\nTime validity: {valid_at} - {invalid_at}"
             if self.expired_at:
-                base_text += f" (已过期: {self.expired_at})"
-        
+                base_text += f" (Expired: {self.expired_at})"
+
         return base_text
-    
+
     @property
     def is_expired(self) -> bool:
-        """是否已过期"""
+        """Whether expired"""
         return self.expired_at is not None
-    
+
     @property
     def is_invalid(self) -> bool:
-        """是否已失效"""
+        """Whether invalid"""
         return self.invalid_at is not None
 
 
 @dataclass
 class InsightForgeResult:
     """
-    深度洞察检索结果 (InsightForge)
-    包含多个子问题的检索结果，以及综合分析
+    Deep insight retrieval result (InsightForge)
+    Contains retrieval results for multiple sub-questions and a comprehensive analysis
     """
     query: str
     simulation_requirement: str
     sub_queries: List[str]
-    
-    # 各维度检索结果
-    semantic_facts: List[str] = field(default_factory=list)  # 语义搜索结果
-    entity_insights: List[Dict[str, Any]] = field(default_factory=list)  # 实体洞察
-    relationship_chains: List[str] = field(default_factory=list)  # 关系链
-    
-    # 统计信息
+
+    # Retrieval results per dimension
+    semantic_facts: List[str] = field(default_factory=list)  # Semantic search results
+    entity_insights: List[Dict[str, Any]] = field(default_factory=list)  # Entity insights
+    relationship_chains: List[str] = field(default_factory=list)  # Relationship chains
+
+    # Statistics
     total_facts: int = 0
     total_entities: int = 0
     total_relationships: int = 0
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "query": self.query,
@@ -164,73 +164,73 @@ class InsightForgeResult:
             "total_entities": self.total_entities,
             "total_relationships": self.total_relationships
         }
-    
+
     def to_text(self) -> str:
-        """转换为详细的文本格式，供LLM理解"""
+        """Convert to detailed text format for LLM understanding"""
         text_parts = [
-            f"## 未来预测深度分析",
-            f"分析问题: {self.query}",
-            f"预测场景: {self.simulation_requirement}",
-            f"\n### 预测数据统计",
-            f"- 相关预测事实: {self.total_facts}条",
-            f"- 涉及实体: {self.total_entities}个",
-            f"- 关系链: {self.total_relationships}条"
+            f"## Future Prediction Deep Analysis",
+            f"Analysis question: {self.query}",
+            f"Prediction scenario: {self.simulation_requirement}",
+            f"\n### Prediction Data Statistics",
+            f"- Related prediction facts: {self.total_facts}",
+            f"- Entities involved: {self.total_entities}",
+            f"- Relationship chains: {self.total_relationships}"
         ]
-        
-        # 子问题
+
+        # Sub-questions
         if self.sub_queries:
-            text_parts.append(f"\n### 分析的子问题")
+            text_parts.append(f"\n### Analyzed Sub-questions")
             for i, sq in enumerate(self.sub_queries, 1):
                 text_parts.append(f"{i}. {sq}")
-        
-        # 语义搜索结果
+
+        # Semantic search results
         if self.semantic_facts:
-            text_parts.append(f"\n### 【关键事实】(请在报告中引用这些原文)")
+            text_parts.append(f"\n### [Key Facts] (Please cite these verbatim in the report)")
             for i, fact in enumerate(self.semantic_facts, 1):
                 text_parts.append(f"{i}. \"{fact}\"")
-        
-        # 实体洞察
+
+        # Entity insights
         if self.entity_insights:
-            text_parts.append(f"\n### 【核心实体】")
+            text_parts.append(f"\n### [Core Entities]")
             for entity in self.entity_insights:
-                text_parts.append(f"- **{entity.get('name', '未知')}** ({entity.get('type', '实体')})")
+                text_parts.append(f"- **{entity.get('name', 'Unknown')}** ({entity.get('type', 'Entity')})")
                 if entity.get('summary'):
-                    text_parts.append(f"  摘要: \"{entity.get('summary')}\"")
+                    text_parts.append(f"  Summary: \"{entity.get('summary')}\"")
                 if entity.get('related_facts'):
-                    text_parts.append(f"  相关事实: {len(entity.get('related_facts', []))}条")
-        
-        # 关系链
+                    text_parts.append(f"  Related facts: {len(entity.get('related_facts', []))} items")
+
+        # Relationship chains
         if self.relationship_chains:
-            text_parts.append(f"\n### 【关系链】")
+            text_parts.append(f"\n### [Relationship Chains]")
             for chain in self.relationship_chains:
                 text_parts.append(f"- {chain}")
-        
+
         return "\n".join(text_parts)
 
 
 @dataclass
 class PanoramaResult:
     """
-    广度搜索结果 (Panorama)
-    包含所有相关信息，包括过期内容
+    Breadth search result (Panorama)
+    Contains all related information, including expired content
     """
     query: str
-    
-    # 全部节点
+
+    # All nodes
     all_nodes: List[NodeInfo] = field(default_factory=list)
-    # 全部边（包括过期的）
+    # All edges (including expired ones)
     all_edges: List[EdgeInfo] = field(default_factory=list)
-    # 当前有效的事实
+    # Currently active facts
     active_facts: List[str] = field(default_factory=list)
-    # 已过期/失效的事实（历史记录）
+    # Expired/invalid facts (historical records)
     historical_facts: List[str] = field(default_factory=list)
-    
-    # 统计
+
+    # Statistics
     total_nodes: int = 0
     total_edges: int = 0
     active_count: int = 0
     historical_count: int = 0
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "query": self.query,
@@ -243,51 +243,51 @@ class PanoramaResult:
             "active_count": self.active_count,
             "historical_count": self.historical_count
         }
-    
+
     def to_text(self) -> str:
-        """转换为文本格式（完整版本，不截断）"""
+        """Convert to text format (complete version, no truncation)"""
         text_parts = [
-            f"## 广度搜索结果（未来全景视图）",
-            f"查询: {self.query}",
-            f"\n### 统计信息",
-            f"- 总节点数: {self.total_nodes}",
-            f"- 总边数: {self.total_edges}",
-            f"- 当前有效事实: {self.active_count}条",
-            f"- 历史/过期事实: {self.historical_count}条"
+            f"## Breadth Search Results (Future Panoramic View)",
+            f"Query: {self.query}",
+            f"\n### Statistics",
+            f"- Total nodes: {self.total_nodes}",
+            f"- Total edges: {self.total_edges}",
+            f"- Currently active facts: {self.active_count}",
+            f"- Historical/expired facts: {self.historical_count}"
         ]
-        
-        # 当前有效的事实（完整输出，不截断）
+
+        # Currently active facts (full output, no truncation)
         if self.active_facts:
-            text_parts.append(f"\n### 【当前有效事实】(模拟结果原文)")
+            text_parts.append(f"\n### [Currently Active Facts] (Simulation results verbatim)")
             for i, fact in enumerate(self.active_facts, 1):
                 text_parts.append(f"{i}. \"{fact}\"")
-        
-        # 历史/过期事实（完整输出，不截断）
+
+        # Historical/expired facts (full output, no truncation)
         if self.historical_facts:
-            text_parts.append(f"\n### 【历史/过期事实】(演变过程记录)")
+            text_parts.append(f"\n### [Historical/Expired Facts] (Evolution records)")
             for i, fact in enumerate(self.historical_facts, 1):
                 text_parts.append(f"{i}. \"{fact}\"")
-        
-        # 关键实体（完整输出，不截断）
+
+        # Key entities (full output, no truncation)
         if self.all_nodes:
-            text_parts.append(f"\n### 【涉及实体】")
+            text_parts.append(f"\n### [Entities Involved]")
             for node in self.all_nodes:
-                entity_type = next((l for l in node.labels if l not in ["Entity", "Node"]), "实体")
+                entity_type = next((l for l in node.labels if l not in ["Entity", "Node"]), "Entity")
                 text_parts.append(f"- **{node.name}** ({entity_type})")
-        
+
         return "\n".join(text_parts)
 
 
 @dataclass
 class AgentInterview:
-    """单个Agent的采访结果"""
+    """Interview result for a single Agent"""
     agent_name: str
-    agent_role: str  # 角色类型（如：学生、教师、媒体等）
-    agent_bio: str  # 简介
-    question: str  # 采访问题
-    response: str  # 采访回答
-    key_quotes: List[str] = field(default_factory=list)  # 关键引言
-    
+    agent_role: str  # Role type (e.g.: Student, Teacher, Media, etc.)
+    agent_bio: str  # Brief bio
+    question: str  # Interview question
+    response: str  # Interview response
+    key_quotes: List[str] = field(default_factory=list)  # Key quotes
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "agent_name": self.agent_name,
@@ -297,24 +297,24 @@ class AgentInterview:
             "response": self.response,
             "key_quotes": self.key_quotes
         }
-    
+
     def to_text(self) -> str:
         text = f"**{self.agent_name}** ({self.agent_role})\n"
-        # 显示完整的agent_bio，不截断
-        text += f"_简介: {self.agent_bio}_\n\n"
+        # Display full agent_bio, no truncation
+        text += f"_Bio: {self.agent_bio}_\n\n"
         text += f"**Q:** {self.question}\n\n"
         text += f"**A:** {self.response}\n"
         if self.key_quotes:
-            text += "\n**关键引言:**\n"
+            text += "\n**Key quotes:**\n"
             for quote in self.key_quotes:
-                # 清理各种引号
+                # Clean up various quotation marks
                 clean_quote = quote.replace('\u201c', '').replace('\u201d', '').replace('"', '')
                 clean_quote = clean_quote.replace('\u300c', '').replace('\u300d', '')
                 clean_quote = clean_quote.strip()
-                # 去掉开头的标点
-                while clean_quote and clean_quote[0] in '，,；;：:、。！？\n\r\t ':
+                # Remove leading punctuation
+                while clean_quote and clean_quote[0] in '\uff0c,;\uff1b:\uff1a\u3001\u3002!?':
                     clean_quote = clean_quote[1:]
-                # 过滤包含问题编号的垃圾内容（问题1-9）
+                # Filter out junk content containing question numbers (Question 1-9)
                 skip = False
                 for d in '123456789':
                     if f'\u95ee\u9898{d}' in clean_quote:
@@ -322,7 +322,7 @@ class AgentInterview:
                         break
                 if skip:
                     continue
-                # 截断过长内容（按句号截断，而非硬截断）
+                # Truncate overly long content (break at period, not hard truncate)
                 if len(clean_quote) > 150:
                     dot_pos = clean_quote.find('\u3002', 80)
                     if dot_pos > 0:
@@ -337,26 +337,26 @@ class AgentInterview:
 @dataclass
 class InterviewResult:
     """
-    采访结果 (Interview)
-    包含多个模拟Agent的采访回答
+    Interview result (Interview)
+    Contains interview responses from multiple simulated Agents
     """
-    interview_topic: str  # 采访主题
-    interview_questions: List[str]  # 采访问题列表
-    
-    # 采访选择的Agent
+    interview_topic: str  # Interview topic
+    interview_questions: List[str]  # List of interview questions
+
+    # Agents selected for interview
     selected_agents: List[Dict[str, Any]] = field(default_factory=list)
-    # 各Agent的采访回答
+    # Interview responses per Agent
     interviews: List[AgentInterview] = field(default_factory=list)
-    
-    # 选择Agent的理由
+
+    # Reasoning for agent selection
     selection_reasoning: str = ""
-    # 整合后的采访摘要
+    # Consolidated interview summary
     summary: str = ""
-    
-    # 统计
+
+    # Statistics
     total_agents: int = 0
     interviewed_count: int = 0
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "interview_topic": self.interview_topic,
@@ -368,66 +368,66 @@ class InterviewResult:
             "total_agents": self.total_agents,
             "interviewed_count": self.interviewed_count
         }
-    
+
     def to_text(self) -> str:
-        """转换为详细的文本格式，供LLM理解和报告引用"""
+        """Convert to detailed text format for LLM understanding and report citation"""
         text_parts = [
-            "## 深度采访报告",
-            f"**采访主题:** {self.interview_topic}",
-            f"**采访人数:** {self.interviewed_count} / {self.total_agents} 位模拟Agent",
-            "\n### 采访对象选择理由",
-            self.selection_reasoning or "（自动选择）",
+            "## In-depth Interview Report",
+            f"**Interview topic:** {self.interview_topic}",
+            f"**Interviewees:** {self.interviewed_count} / {self.total_agents} simulated Agents",
+            "\n### Reasoning for Interviewee Selection",
+            self.selection_reasoning or "(Auto-selected)",
             "\n---",
-            "\n### 采访实录",
+            "\n### Interview Transcripts",
         ]
 
         if self.interviews:
             for i, interview in enumerate(self.interviews, 1):
-                text_parts.append(f"\n#### 采访 #{i}: {interview.agent_name}")
+                text_parts.append(f"\n#### Interview #{i}: {interview.agent_name}")
                 text_parts.append(interview.to_text())
                 text_parts.append("\n---")
         else:
-            text_parts.append("（无采访记录）\n\n---")
+            text_parts.append("(No interview records)\n\n---")
 
-        text_parts.append("\n### 采访摘要与核心观点")
-        text_parts.append(self.summary or "（无摘要）")
+        text_parts.append("\n### Interview Summary and Key Perspectives")
+        text_parts.append(self.summary or "(No summary)")
 
         return "\n".join(text_parts)
 
 
 class GraphToolsService:
     """
-    图谱检索工具服务
+    Graph Retrieval Tool Service
 
-    【核心检索工具 - 优化后】
-    1. insight_forge - 深度洞察检索（最强大，自动生成子问题，多维度检索）
-    2. panorama_search - 广度搜索（获取全貌，包括过期内容）
-    3. quick_search - 简单搜索（快速检索）
-    4. interview_agents - 深度采访（采访模拟Agent，获取多视角观点）
+    [Core Retrieval Tools - Optimized]
+    1. insight_forge - Deep insight retrieval (most powerful, auto-generates sub-questions, multi-dimensional search)
+    2. panorama_search - Breadth search (gets the full picture, including expired content)
+    3. quick_search - Simple search (fast retrieval)
+    4. interview_agents - In-depth interview (interview simulation agents, gather multi-perspective viewpoints)
 
-    【基础工具】
-    - search_graph - 图谱语义搜索
-    - get_all_nodes - 获取图谱所有节点
-    - get_all_edges - 获取图谱所有边（含时间信息）
-    - get_node_detail - 获取节点详细信息
-    - get_node_edges - 获取节点相关的边
-    - get_entities_by_type - 按类型获取实体
-    - get_entity_summary - 获取实体的关系摘要
+    [Basic Tools]
+    - search_graph - Graph semantic search
+    - get_all_nodes - Get all nodes in the graph
+    - get_all_edges - Get all edges in the graph (with time information)
+    - get_node_detail - Get detailed node information
+    - get_node_edges - Get edges related to a node
+    - get_entities_by_type - Get entities by type
+    - get_entity_summary - Get relationship summary for an entity
     """
 
     def __init__(self, llm_client: Optional[LLMClient] = None):
         self.store = GraphStore()
-        # LLM客户端用于InsightForge生成子问题
+        # LLM client used for InsightForge to generate sub-questions
         self._llm_client = llm_client
-        logger.info("GraphToolsService 初始化完成")
-    
+        logger.info("GraphToolsService initialized")
+
     @property
     def llm(self) -> LLMClient:
-        """延迟初始化LLM客户端"""
+        """Lazy initialization of LLM client"""
         if self._llm_client is None:
             self._llm_client = LLMClient()
         return self._llm_client
-    
+
     def search_graph(
         self,
         graph_id: str,
@@ -436,18 +436,18 @@ class GraphToolsService:
         scope: str = "edges"
     ) -> SearchResult:
         """
-        图谱搜索 (PostgreSQL full-text search)
+        Graph search (PostgreSQL full-text search)
 
         Args:
-            graph_id: 图谱ID
-            query: 搜索查询
-            limit: 返回结果数量
-            scope: 搜索范围，"edges" 或 "nodes"
+            graph_id: Graph ID
+            query: Search query
+            limit: Number of results to return
+            scope: Search scope, "edges" or "nodes"
 
         Returns:
-            SearchResult: 搜索结果
+            SearchResult: Search result
         """
-        logger.info(f"图谱搜索: graph_id={graph_id}, query={query[:50]}...")
+        logger.info(f"Graph search: graph_id={graph_id}, query={query[:50]}...")
 
         result = self.store.search(graph_id, query, limit, scope)
 
@@ -461,15 +461,15 @@ class GraphToolsService:
 
     def get_all_nodes(self, graph_id: str) -> List[NodeInfo]:
         """
-        获取图谱的所有节点
+        Get all nodes in the graph
 
         Args:
-            graph_id: 图谱ID
+            graph_id: Graph ID
 
         Returns:
-            节点列表
+            Node list
         """
-        logger.info(f"获取图谱 {graph_id} 的所有节点...")
+        logger.info(f"Getting all nodes for graph {graph_id}...")
 
         nodes_data = self.store.get_all_nodes(graph_id)
 
@@ -483,21 +483,21 @@ class GraphToolsService:
                 attributes=node_data.get("attributes", {})
             ))
 
-        logger.info(f"获取到 {len(result)} 个节点")
+        logger.info(f"Retrieved {len(result)} nodes")
         return result
 
     def get_all_edges(self, graph_id: str, include_temporal: bool = True) -> List[EdgeInfo]:
         """
-        获取图谱的所有边（分页获取，包含时间信息）
+        Get all edges in the graph (paginated, with time information)
 
         Args:
-            graph_id: 图谱ID
-            include_temporal: 是否包含时间信息（默认True）
+            graph_id: Graph ID
+            include_temporal: Whether to include time information (default True)
 
         Returns:
-            边列表（包含created_at, valid_at, invalid_at, expired_at）
+            Edge list (with created_at, valid_at, invalid_at, expired_at)
         """
-        logger.info(f"获取图谱 {graph_id} 的所有边...")
+        logger.info(f"Getting all edges for graph {graph_id}...")
 
         edges_data = self.store.get_all_edges(graph_id)
 
@@ -519,21 +519,21 @@ class GraphToolsService:
 
             result.append(edge_info)
 
-        logger.info(f"获取到 {len(result)} 条边")
+        logger.info(f"Retrieved {len(result)} edges")
         return result
-    
+
     def get_node_detail(self, node_uuid: str) -> Optional[NodeInfo]:
         """
-        获取单个节点的详细信息
-        
+        Get detailed information for a single node
+
         Args:
-            node_uuid: 节点UUID
-            
+            node_uuid: Node UUID
+
         Returns:
-            节点信息或None
+            Node information or None
         """
-        logger.info(f"获取节点详情: {node_uuid[:8]}...")
-        
+        logger.info(f"Getting node detail: {node_uuid[:8]}...")
+
         try:
             node_data = self.store.get_node(node_uuid)
 
@@ -548,108 +548,108 @@ class GraphToolsService:
                 attributes=node_data.get("attributes", {})
             )
         except Exception as e:
-            logger.error(f"获取节点详情失败: {str(e)}")
+            logger.error(f"Failed to get node detail: {str(e)}")
             return None
-    
+
     def get_node_edges(self, graph_id: str, node_uuid: str) -> List[EdgeInfo]:
         """
-        获取节点相关的所有边
-        
-        通过获取图谱所有边，然后过滤出与指定节点相关的边
-        
+        Get all edges related to a node
+
+        Gets all edges in the graph, then filters for edges related to the specified node
+
         Args:
-            graph_id: 图谱ID
-            node_uuid: 节点UUID
-            
+            graph_id: Graph ID
+            node_uuid: Node UUID
+
         Returns:
-            边列表
+            Edge list
         """
-        logger.info(f"获取节点 {node_uuid[:8]}... 的相关边")
-        
+        logger.info(f"Getting edges related to node {node_uuid[:8]}...")
+
         try:
-            # 获取图谱所有边，然后过滤
+            # Get all edges in the graph, then filter
             all_edges = self.get_all_edges(graph_id)
-            
+
             result = []
             for edge in all_edges:
-                # 检查边是否与指定节点相关（作为源或目标）
+                # Check if the edge is related to the specified node (as source or target)
                 if edge.source_node_uuid == node_uuid or edge.target_node_uuid == node_uuid:
                     result.append(edge)
-            
-            logger.info(f"找到 {len(result)} 条与节点相关的边")
+
+            logger.info(f"Found {len(result)} edges related to the node")
             return result
-            
+
         except Exception as e:
-            logger.warning(f"获取节点边失败: {str(e)}")
+            logger.warning(f"Failed to get node edges: {str(e)}")
             return []
-    
+
     def get_entities_by_type(
-        self, 
-        graph_id: str, 
+        self,
+        graph_id: str,
         entity_type: str
     ) -> List[NodeInfo]:
         """
-        按类型获取实体
-        
+        Get entities by type
+
         Args:
-            graph_id: 图谱ID
-            entity_type: 实体类型（如 Student, PublicFigure 等）
-            
+            graph_id: Graph ID
+            entity_type: Entity type (e.g., Student, PublicFigure, etc.)
+
         Returns:
-            符合类型的实体列表
+            List of entities matching the type
         """
-        logger.info(f"获取类型为 {entity_type} 的实体...")
-        
+        logger.info(f"Getting entities of type {entity_type}...")
+
         all_nodes = self.get_all_nodes(graph_id)
-        
+
         filtered = []
         for node in all_nodes:
-            # 检查labels是否包含指定类型
+            # Check if labels contain the specified type
             if entity_type in node.labels:
                 filtered.append(node)
-        
-        logger.info(f"找到 {len(filtered)} 个 {entity_type} 类型的实体")
+
+        logger.info(f"Found {len(filtered)} entities of type {entity_type}")
         return filtered
-    
+
     def get_entity_summary(
-        self, 
-        graph_id: str, 
+        self,
+        graph_id: str,
         entity_name: str
     ) -> Dict[str, Any]:
         """
-        获取指定实体的关系摘要
-        
-        搜索与该实体相关的所有信息，并生成摘要
-        
+        Get relationship summary for a specified entity
+
+        Searches all information related to the entity and generates a summary
+
         Args:
-            graph_id: 图谱ID
-            entity_name: 实体名称
-            
+            graph_id: Graph ID
+            entity_name: Entity name
+
         Returns:
-            实体摘要信息
+            Entity summary information
         """
-        logger.info(f"获取实体 {entity_name} 的关系摘要...")
-        
-        # 先搜索该实体相关的信息
+        logger.info(f"Getting relationship summary for entity {entity_name}...")
+
+        # First search for information related to the entity
         search_result = self.search_graph(
             graph_id=graph_id,
             query=entity_name,
             limit=20
         )
-        
-        # 尝试在所有节点中找到该实体
+
+        # Try to find the entity among all nodes
         all_nodes = self.get_all_nodes(graph_id)
         entity_node = None
         for node in all_nodes:
             if node.name.lower() == entity_name.lower():
                 entity_node = node
                 break
-        
+
         related_edges = []
         if entity_node:
-            # 传入graph_id参数
+            # Pass graph_id parameter
             related_edges = self.get_node_edges(graph_id, entity_node.uuid)
-        
+
         return {
             "entity_name": entity_name,
             "entity_info": entity_node.to_dict() if entity_node else None,
@@ -657,34 +657,34 @@ class GraphToolsService:
             "related_edges": [e.to_dict() for e in related_edges],
             "total_relations": len(related_edges)
         }
-    
+
     def get_graph_statistics(self, graph_id: str) -> Dict[str, Any]:
         """
-        获取图谱的统计信息
-        
+        Get graph statistics
+
         Args:
-            graph_id: 图谱ID
-            
+            graph_id: Graph ID
+
         Returns:
-            统计信息
+            Statistics information
         """
-        logger.info(f"获取图谱 {graph_id} 的统计信息...")
-        
+        logger.info(f"Getting statistics for graph {graph_id}...")
+
         nodes = self.get_all_nodes(graph_id)
         edges = self.get_all_edges(graph_id)
-        
-        # 统计实体类型分布
+
+        # Count entity type distribution
         entity_types = {}
         for node in nodes:
             for label in node.labels:
                 if label not in ["Entity", "Node"]:
                     entity_types[label] = entity_types.get(label, 0) + 1
-        
-        # 统计关系类型分布
+
+        # Count relationship type distribution
         relation_types = {}
         for edge in edges:
             relation_types[edge.name] = relation_types.get(edge.name, 0) + 1
-        
+
         return {
             "graph_id": graph_id,
             "total_nodes": len(nodes),
@@ -692,42 +692,42 @@ class GraphToolsService:
             "entity_types": entity_types,
             "relation_types": relation_types
         }
-    
+
     def get_simulation_context(
-        self, 
+        self,
         graph_id: str,
         simulation_requirement: str,
         limit: int = 30
     ) -> Dict[str, Any]:
         """
-        获取模拟相关的上下文信息
-        
-        综合搜索与模拟需求相关的所有信息
-        
+        Get context information related to a simulation
+
+        Comprehensively searches all information related to the simulation requirement
+
         Args:
-            graph_id: 图谱ID
-            simulation_requirement: 模拟需求描述
-            limit: 每类信息的数量限制
-            
+            graph_id: Graph ID
+            simulation_requirement: Simulation requirement description
+            limit: Quantity limit per information type
+
         Returns:
-            模拟上下文信息
+            Simulation context information
         """
-        logger.info(f"获取模拟上下文: {simulation_requirement[:50]}...")
-        
-        # 搜索与模拟需求相关的信息
+        logger.info(f"Getting simulation context: {simulation_requirement[:50]}...")
+
+        # Search for information related to the simulation requirement
         search_result = self.search_graph(
             graph_id=graph_id,
             query=simulation_requirement,
             limit=limit
         )
-        
-        # 获取图谱统计
+
+        # Get graph statistics
         stats = self.get_graph_statistics(graph_id)
-        
-        # 获取所有实体节点
+
+        # Get all entity nodes
         all_nodes = self.get_all_nodes(graph_id)
-        
-        # 筛选有实际类型的实体（非纯Entity节点）
+
+        # Filter entities with actual types (non-pure Entity nodes)
         entities = []
         for node in all_nodes:
             custom_labels = [l for l in node.labels if l not in ["Entity", "Node"]]
@@ -737,17 +737,17 @@ class GraphToolsService:
                     "type": custom_labels[0],
                     "summary": node.summary
                 })
-        
+
         return {
             "simulation_requirement": simulation_requirement,
             "related_facts": search_result.facts,
             "graph_statistics": stats,
-            "entities": entities[:limit],  # 限制数量
+            "entities": entities[:limit],  # Limit quantity
             "total_entities": len(entities)
         }
-    
-    # ========== 核心检索工具（优化后） ==========
-    
+
+    # ========== Core Retrieval Tools (Optimized) ==========
+
     def insight_forge(
         self,
         graph_id: str,
@@ -757,34 +757,34 @@ class GraphToolsService:
         max_sub_queries: int = 5
     ) -> InsightForgeResult:
         """
-        【InsightForge - 深度洞察检索】
-        
-        最强大的混合检索函数，自动分解问题并多维度检索：
-        1. 使用LLM将问题分解为多个子问题
-        2. 对每个子问题进行语义搜索
-        3. 提取相关实体并获取其详细信息
-        4. 追踪关系链
-        5. 整合所有结果，生成深度洞察
-        
+        [InsightForge - Deep Insight Retrieval]
+
+        The most powerful hybrid retrieval function, automatically decomposes questions and searches across multiple dimensions:
+        1. Uses LLM to decompose the question into multiple sub-questions
+        2. Performs semantic search for each sub-question
+        3. Extracts related entities and gets their detailed information
+        4. Traces relationship chains
+        5. Consolidates all results to generate deep insights
+
         Args:
-            graph_id: 图谱ID
-            query: 用户问题
-            simulation_requirement: 模拟需求描述
-            report_context: 报告上下文（可选，用于更精准的子问题生成）
-            max_sub_queries: 最大子问题数量
-            
+            graph_id: Graph ID
+            query: User question
+            simulation_requirement: Simulation requirement description
+            report_context: Report context (optional, for more precise sub-question generation)
+            max_sub_queries: Maximum number of sub-questions
+
         Returns:
-            InsightForgeResult: 深度洞察检索结果
+            InsightForgeResult: Deep insight retrieval result
         """
-        logger.info(f"InsightForge 深度洞察检索: {query[:50]}...")
-        
+        logger.info(f"InsightForge deep insight retrieval: {query[:50]}...")
+
         result = InsightForgeResult(
             query=query,
             simulation_requirement=simulation_requirement,
             sub_queries=[]
         )
-        
-        # Step 1: 使用LLM生成子问题
+
+        # Step 1: Use LLM to generate sub-questions
         sub_queries = self._generate_sub_queries(
             query=query,
             simulation_requirement=simulation_requirement,
@@ -792,13 +792,13 @@ class GraphToolsService:
             max_queries=max_sub_queries
         )
         result.sub_queries = sub_queries
-        logger.info(f"生成 {len(sub_queries)} 个子问题")
-        
-        # Step 2: 对每个子问题进行语义搜索
+        logger.info(f"Generated {len(sub_queries)} sub-questions")
+
+        # Step 2: Perform semantic search for each sub-question
         all_facts = []
         all_edges = []
         seen_facts = set()
-        
+
         for sub_query in sub_queries:
             search_result = self.search_graph(
                 graph_id=graph_id,
@@ -806,15 +806,15 @@ class GraphToolsService:
                 limit=15,
                 scope="edges"
             )
-            
+
             for fact in search_result.facts:
                 if fact not in seen_facts:
                     all_facts.append(fact)
                     seen_facts.add(fact)
-            
+
             all_edges.extend(search_result.edges)
-        
-        # 对原始问题也进行搜索
+
+        # Also search for the original question
         main_search = self.search_graph(
             graph_id=graph_id,
             query=query,
@@ -825,11 +825,11 @@ class GraphToolsService:
             if fact not in seen_facts:
                 all_facts.append(fact)
                 seen_facts.add(fact)
-        
+
         result.semantic_facts = all_facts
         result.total_facts = len(all_facts)
-        
-        # Step 3: 从边中提取相关实体UUID，只获取这些实体的信息（不获取全部节点）
+
+        # Step 3: Extract related entity UUIDs from edges, only get information for these entities (not all nodes)
         entity_uuids = set()
         for edge_data in all_edges:
             if isinstance(edge_data, dict):
@@ -839,62 +839,62 @@ class GraphToolsService:
                     entity_uuids.add(source_uuid)
                 if target_uuid:
                     entity_uuids.add(target_uuid)
-        
-        # 获取所有相关实体的详情（不限制数量，完整输出）
+
+        # Get detailed information for all related entities (no quantity limit, full output)
         entity_insights = []
-        node_map = {}  # 用于后续关系链构建
-        
-        for uuid in list(entity_uuids):  # 处理所有实体，不截断
+        node_map = {}  # Used for subsequent relationship chain construction
+
+        for uuid in list(entity_uuids):  # Process all entities, no truncation
             if not uuid:
                 continue
             try:
-                # 单独获取每个相关节点的信息
+                # Get information for each related node individually
                 node = self.get_node_detail(uuid)
                 if node:
                     node_map[uuid] = node
-                    entity_type = next((l for l in node.labels if l not in ["Entity", "Node"]), "实体")
-                    
-                    # 获取该实体相关的所有事实（不截断）
+                    entity_type = next((l for l in node.labels if l not in ["Entity", "Node"]), "Entity")
+
+                    # Get all facts related to this entity (no truncation)
                     related_facts = [
-                        f for f in all_facts 
+                        f for f in all_facts
                         if node.name.lower() in f.lower()
                     ]
-                    
+
                     entity_insights.append({
                         "uuid": node.uuid,
                         "name": node.name,
                         "type": entity_type,
                         "summary": node.summary,
-                        "related_facts": related_facts  # 完整输出，不截断
+                        "related_facts": related_facts  # Full output, no truncation
                     })
             except Exception as e:
-                logger.debug(f"获取节点 {uuid} 失败: {e}")
+                logger.debug(f"Failed to get node {uuid}: {e}")
                 continue
-        
+
         result.entity_insights = entity_insights
         result.total_entities = len(entity_insights)
-        
-        # Step 4: 构建所有关系链（不限制数量）
+
+        # Step 4: Build all relationship chains (no quantity limit)
         relationship_chains = []
-        for edge_data in all_edges:  # 处理所有边，不截断
+        for edge_data in all_edges:  # Process all edges, no truncation
             if isinstance(edge_data, dict):
                 source_uuid = edge_data.get('source_node_uuid', '')
                 target_uuid = edge_data.get('target_node_uuid', '')
                 relation_name = edge_data.get('name', '')
-                
+
                 source_name = node_map.get(source_uuid, NodeInfo('', '', [], '', {})).name or source_uuid[:8]
                 target_name = node_map.get(target_uuid, NodeInfo('', '', [], '', {})).name or target_uuid[:8]
-                
+
                 chain = f"{source_name} --[{relation_name}]--> {target_name}"
                 if chain not in relationship_chains:
                     relationship_chains.append(chain)
-        
+
         result.relationship_chains = relationship_chains
         result.total_relationships = len(relationship_chains)
-        
-        logger.info(f"InsightForge完成: {result.total_facts}条事实, {result.total_entities}个实体, {result.total_relationships}条关系")
+
+        logger.info(f"InsightForge complete: {result.total_facts} facts, {result.total_entities} entities, {result.total_relationships} relationships")
         return result
-    
+
     def _generate_sub_queries(
         self,
         query: str,
@@ -903,27 +903,27 @@ class GraphToolsService:
         max_queries: int = 5
     ) -> List[str]:
         """
-        使用LLM生成子问题
-        
-        将复杂问题分解为多个可以独立检索的子问题
+        Use LLM to generate sub-questions
+
+        Decompose a complex question into multiple sub-questions that can be independently searched
         """
-        system_prompt = """你是一个专业的问题分析专家。你的任务是将一个复杂问题分解为多个可以在模拟世界中独立观察的子问题。
+        system_prompt = """You are a professional question analysis expert. Your task is to decompose a complex question into multiple sub-questions that can be independently observed in a simulated world.
 
-要求：
-1. 每个子问题应该足够具体，可以在模拟世界中找到相关的Agent行为或事件
-2. 子问题应该覆盖原问题的不同维度（如：谁、什么、为什么、怎么样、何时、何地）
-3. 子问题应该与模拟场景相关
-4. 返回JSON格式：{"sub_queries": ["子问题1", "子问题2", ...]}"""
+Requirements:
+1. Each sub-question should be specific enough to find related Agent behaviors or events in the simulated world
+2. Sub-questions should cover different dimensions of the original question (e.g.: who, what, why, how, when, where)
+3. Sub-questions should be relevant to the simulation scenario
+4. Return in JSON format: {"sub_queries": ["sub-question 1", "sub-question 2", ...]}"""
 
-        user_prompt = f"""模拟需求背景：
+        user_prompt = f"""Simulation requirement background:
 {simulation_requirement}
 
-{f"报告上下文：{report_context[:500]}" if report_context else ""}
+{f"Report context: {report_context[:500]}" if report_context else ""}
 
-请将以下问题分解为{max_queries}个子问题：
+Please decompose the following question into {max_queries} sub-questions:
 {query}
 
-返回JSON格式的子问题列表。"""
+Return the sub-question list in JSON format."""
 
         try:
             response = self.llm.chat_json(
@@ -933,21 +933,21 @@ class GraphToolsService:
                 ],
                 temperature=0.3
             )
-            
+
             sub_queries = response.get("sub_queries", [])
-            # 确保是字符串列表
+            # Ensure it's a list of strings
             return [str(sq) for sq in sub_queries[:max_queries]]
-            
+
         except Exception as e:
-            logger.warning(f"生成子问题失败: {str(e)}，使用默认子问题")
-            # 降级：返回基于原问题的变体
+            logger.warning(f"Failed to generate sub-questions: {str(e)}, using default sub-questions")
+            # Fallback: return variants based on the original question
             return [
                 query,
-                f"{query} 的主要参与者",
-                f"{query} 的原因和影响",
-                f"{query} 的发展过程"
+                f"Key participants in {query}",
+                f"Causes and impacts of {query}",
+                f"Development process of {query}"
             ][:max_queries]
-    
+
     def panorama_search(
         self,
         graph_id: str,
@@ -956,68 +956,68 @@ class GraphToolsService:
         limit: int = 50
     ) -> PanoramaResult:
         """
-        【PanoramaSearch - 广度搜索】
-        
-        获取全貌视图，包括所有相关内容和历史/过期信息：
-        1. 获取所有相关节点
-        2. 获取所有边（包括已过期/失效的）
-        3. 分类整理当前有效和历史信息
-        
-        这个工具适用于需要了解事件全貌、追踪演变过程的场景。
-        
+        [PanoramaSearch - Breadth Search]
+
+        Gets the panoramic view, including all related content and historical/expired information:
+        1. Gets all related nodes
+        2. Gets all edges (including expired/invalid ones)
+        3. Categorizes and organizes current and historical information
+
+        This tool is suitable for scenarios where you need to understand the full picture of an event or track its evolution.
+
         Args:
-            graph_id: 图谱ID
-            query: 搜索查询（用于相关性排序）
-            include_expired: 是否包含过期内容（默认True）
-            limit: 返回结果数量限制
-            
+            graph_id: Graph ID
+            query: Search query (for relevance sorting)
+            include_expired: Whether to include expired content (default True)
+            limit: Result count limit
+
         Returns:
-            PanoramaResult: 广度搜索结果
+            PanoramaResult: Breadth search result
         """
-        logger.info(f"PanoramaSearch 广度搜索: {query[:50]}...")
-        
+        logger.info(f"PanoramaSearch breadth search: {query[:50]}...")
+
         result = PanoramaResult(query=query)
-        
-        # 获取所有节点
+
+        # Get all nodes
         all_nodes = self.get_all_nodes(graph_id)
         node_map = {n.uuid: n for n in all_nodes}
         result.all_nodes = all_nodes
         result.total_nodes = len(all_nodes)
-        
-        # 获取所有边（包含时间信息）
+
+        # Get all edges (with time information)
         all_edges = self.get_all_edges(graph_id, include_temporal=True)
         result.all_edges = all_edges
         result.total_edges = len(all_edges)
-        
-        # 分类事实
+
+        # Categorize facts
         active_facts = []
         historical_facts = []
-        
+
         for edge in all_edges:
             if not edge.fact:
                 continue
-            
-            # 为事实添加实体名称
+
+            # Add entity names to facts
             source_name = node_map.get(edge.source_node_uuid, NodeInfo('', '', [], '', {})).name or edge.source_node_uuid[:8]
             target_name = node_map.get(edge.target_node_uuid, NodeInfo('', '', [], '', {})).name or edge.target_node_uuid[:8]
-            
-            # 判断是否过期/失效
+
+            # Determine if expired/invalid
             is_historical = edge.is_expired or edge.is_invalid
-            
+
             if is_historical:
-                # 历史/过期事实，添加时间标记
-                valid_at = edge.valid_at or "未知"
-                invalid_at = edge.invalid_at or edge.expired_at or "未知"
+                # Historical/expired fact, add time marker
+                valid_at = edge.valid_at or "Unknown"
+                invalid_at = edge.invalid_at or edge.expired_at or "Unknown"
                 fact_with_time = f"[{valid_at} - {invalid_at}] {edge.fact}"
                 historical_facts.append(fact_with_time)
             else:
-                # 当前有效事实
+                # Currently active fact
                 active_facts.append(edge.fact)
-        
-        # 基于查询进行相关性排序
+
+        # Relevance sorting based on query
         query_lower = query.lower()
-        keywords = [w.strip() for w in query_lower.replace(',', ' ').replace('，', ' ').split() if len(w.strip()) > 1]
-        
+        keywords = [w.strip() for w in query_lower.replace(',', ' ').replace('\uff0c', ' ').split() if len(w.strip()) > 1]
+
         def relevance_score(fact: str) -> int:
             fact_lower = fact.lower()
             score = 0
@@ -1027,19 +1027,19 @@ class GraphToolsService:
                 if kw in fact_lower:
                     score += 10
             return score
-        
-        # 排序并限制数量
+
+        # Sort and limit quantity
         active_facts.sort(key=relevance_score, reverse=True)
         historical_facts.sort(key=relevance_score, reverse=True)
-        
+
         result.active_facts = active_facts[:limit]
         result.historical_facts = historical_facts[:limit] if include_expired else []
         result.active_count = len(active_facts)
         result.historical_count = len(historical_facts)
-        
-        logger.info(f"PanoramaSearch完成: {result.active_count}条有效, {result.historical_count}条历史")
+
+        logger.info(f"PanoramaSearch complete: {result.active_count} active, {result.historical_count} historical")
         return result
-    
+
     def quick_search(
         self,
         graph_id: str,
@@ -1047,34 +1047,34 @@ class GraphToolsService:
         limit: int = 10
     ) -> SearchResult:
         """
-        【QuickSearch - 简单搜索】
-        
-        快速、轻量级的检索工具：
-        1. 直接调用图谱语义搜索
-        2. 返回最相关的结果
-        3. 适用于简单、直接的检索需求
-        
+        [QuickSearch - Simple Search]
+
+        Fast, lightweight retrieval tool:
+        1. Directly calls graph semantic search
+        2. Returns the most relevant results
+        3. Suitable for simple, direct retrieval needs
+
         Args:
-            graph_id: 图谱ID
-            query: 搜索查询
-            limit: 返回结果数量
-            
+            graph_id: Graph ID
+            query: Search query
+            limit: Number of results to return
+
         Returns:
-            SearchResult: 搜索结果
+            SearchResult: Search result
         """
-        logger.info(f"QuickSearch 简单搜索: {query[:50]}...")
-        
-        # 直接调用现有的search_graph方法
+        logger.info(f"QuickSearch simple search: {query[:50]}...")
+
+        # Directly call the existing search_graph method
         result = self.search_graph(
             graph_id=graph_id,
             query=query,
             limit=limit,
             scope="edges"
         )
-        
-        logger.info(f"QuickSearch完成: {result.total_count}条结果")
+
+        logger.info(f"QuickSearch complete: {result.total_count} results")
         return result
-    
+
     def interview_agents(
         self,
         simulation_id: str,
@@ -1084,212 +1084,212 @@ class GraphToolsService:
         custom_questions: List[str] = None
     ) -> InterviewResult:
         """
-        【InterviewAgents - 深度采访】
-        
-        调用真实的OASIS采访API，采访模拟中正在运行的Agent：
-        1. 自动读取人设文件，了解所有模拟Agent
-        2. 使用LLM分析采访需求，智能选择最相关的Agent
-        3. 使用LLM生成采访问题
-        4. 调用 /api/simulation/interview/batch 接口进行真实采访（双平台同时采访）
-        5. 整合所有采访结果，生成采访报告
-        
-        【重要】此功能需要模拟环境处于运行状态（OASIS环境未关闭）
-        
-        【使用场景】
-        - 需要从不同角色视角了解事件看法
-        - 需要收集多方意见和观点
-        - 需要获取模拟Agent的真实回答（非LLM模拟）
-        
+        [InterviewAgents - In-depth Interview]
+
+        Calls the real OASIS interview API to interview running Agents in the simulation:
+        1. Automatically reads profile files to learn about all simulated Agents
+        2. Uses LLM to analyze interview requirements and intelligently select the most relevant Agents
+        3. Uses LLM to generate interview questions
+        4. Calls /api/simulation/interview/batch endpoint for real interviews (dual-platform simultaneous interviews)
+        5. Consolidates all interview results to generate an interview report
+
+        [Important] This feature requires the simulation environment to be running (OASIS environment not shut down)
+
+        [Use Cases]
+        - Need to understand event perspectives from different role viewpoints
+        - Need to collect opinions and viewpoints from multiple parties
+        - Need to obtain real responses from simulated Agents (not LLM-simulated)
+
         Args:
-            simulation_id: 模拟ID（用于定位人设文件和调用采访API）
-            interview_requirement: 采访需求描述（非结构化，如"了解学生对事件的看法"）
-            simulation_requirement: 模拟需求背景（可选）
-            max_agents: 最多采访的Agent数量
-            custom_questions: 自定义采访问题（可选，若不提供则自动生成）
-            
+            simulation_id: Simulation ID (for locating profile files and calling the interview API)
+            interview_requirement: Interview requirement description (unstructured, e.g., "understand students' views on the event")
+            simulation_requirement: Simulation requirement background (optional)
+            max_agents: Maximum number of Agents to interview
+            custom_questions: Custom interview questions (optional; if not provided, auto-generated)
+
         Returns:
-            InterviewResult: 采访结果
+            InterviewResult: Interview result
         """
         from .simulation_runner import SimulationRunner
-        
-        logger.info(f"InterviewAgents 深度采访（真实API）: {interview_requirement[:50]}...")
-        
+
+        logger.info(f"InterviewAgents in-depth interview (real API): {interview_requirement[:50]}...")
+
         result = InterviewResult(
             interview_topic=interview_requirement,
             interview_questions=custom_questions or []
         )
-        
-        # Step 1: 读取人设文件
+
+        # Step 1: Read profile files
         profiles = self._load_agent_profiles(simulation_id)
-        
+
         if not profiles:
-            logger.warning(f"未找到模拟 {simulation_id} 的人设文件")
-            result.summary = "未找到可采访的Agent人设文件"
+            logger.warning(f"No profile files found for simulation {simulation_id}")
+            result.summary = "No Agent profile files found to interview"
             return result
-        
+
         result.total_agents = len(profiles)
-        logger.info(f"加载到 {len(profiles)} 个Agent人设")
-        
-        # Step 2: 使用LLM选择要采访的Agent（返回agent_id列表）
+        logger.info(f"Loaded {len(profiles)} Agent profiles")
+
+        # Step 2: Use LLM to select Agents for interview (returns agent_id list)
         selected_agents, selected_indices, selection_reasoning = self._select_agents_for_interview(
             profiles=profiles,
             interview_requirement=interview_requirement,
             simulation_requirement=simulation_requirement,
             max_agents=max_agents
         )
-        
+
         result.selected_agents = selected_agents
         result.selection_reasoning = selection_reasoning
-        logger.info(f"选择了 {len(selected_agents)} 个Agent进行采访: {selected_indices}")
-        
-        # Step 3: 生成采访问题（如果没有提供）
+        logger.info(f"Selected {len(selected_agents)} Agents for interview: {selected_indices}")
+
+        # Step 3: Generate interview questions (if not provided)
         if not result.interview_questions:
             result.interview_questions = self._generate_interview_questions(
                 interview_requirement=interview_requirement,
                 simulation_requirement=simulation_requirement,
                 selected_agents=selected_agents
             )
-            logger.info(f"生成了 {len(result.interview_questions)} 个采访问题")
-        
-        # 将问题合并为一个采访prompt
+            logger.info(f"Generated {len(result.interview_questions)} interview questions")
+
+        # Merge questions into a single interview prompt
         combined_prompt = "\n".join([f"{i+1}. {q}" for i, q in enumerate(result.interview_questions)])
-        
-        # 添加优化前缀，约束Agent回复格式
+
+        # Add optimized prefix to constrain Agent response format
         INTERVIEW_PROMPT_PREFIX = (
-            "你正在接受一次采访。请结合你的人设、所有的过往记忆与行动，"
-            "以纯文本方式直接回答以下问题。\n"
-            "回复要求：\n"
-            "1. 直接用自然语言回答，不要调用任何工具\n"
-            "2. 不要返回JSON格式或工具调用格式\n"
-            "3. 不要使用Markdown标题（如#、##、###）\n"
-            "4. 按问题编号逐一回答，每个回答以「问题X：」开头（X为问题编号）\n"
-            "5. 每个问题的回答之间用空行分隔\n"
-            "6. 回答要有实质内容，每个问题至少回答2-3句话\n\n"
+            "You are being interviewed. Please answer the following questions in plain text, "
+            "drawing on your persona, all past memories and actions.\n"
+            "Response requirements:\n"
+            "1. Answer directly in natural language, do not call any tools\n"
+            "2. Do not return JSON format or tool call format\n"
+            "3. Do not use Markdown headings (e.g., #, ##, ###)\n"
+            "4. Answer each question by number, starting each answer with \"Question X:\" (X is the question number)\n"
+            "5. Separate answers to each question with a blank line\n"
+            "6. Answers should have substantial content, at least 2-3 sentences per question\n\n"
         )
         optimized_prompt = f"{INTERVIEW_PROMPT_PREFIX}{combined_prompt}"
-        
-        # Step 4: 调用真实的采访API（不指定platform，默认双平台同时采访）
+
+        # Step 4: Call the real interview API (no platform specified, defaults to dual-platform simultaneous interviews)
         try:
-            # 构建批量采访列表（不指定platform，双平台采访）
+            # Build batch interview list (no platform specified, dual-platform interviews)
             interviews_request = []
             for agent_idx in selected_indices:
                 interviews_request.append({
                     "agent_id": agent_idx,
-                    "prompt": optimized_prompt  # 使用优化后的prompt
-                    # 不指定platform，API会在twitter和reddit两个平台都采访
+                    "prompt": optimized_prompt  # Use the optimized prompt
+                    # No platform specified, API will interview on both twitter and reddit
                 })
-            
-            logger.info(f"调用批量采访API（双平台）: {len(interviews_request)} 个Agent")
-            
-            # 调用 SimulationRunner 的批量采访方法（不传platform，双平台采访）
+
+            logger.info(f"Calling batch interview API (dual-platform): {len(interviews_request)} Agents")
+
+            # Call SimulationRunner's batch interview method (no platform passed, dual-platform interviews)
             api_result = SimulationRunner.interview_agents_batch(
                 simulation_id=simulation_id,
                 interviews=interviews_request,
-                platform=None,  # 不指定platform，双平台采访
-                timeout=180.0   # 双平台需要更长超时
+                platform=None,  # No platform specified, dual-platform interviews
+                timeout=180.0   # Dual-platform needs longer timeout
             )
-            
-            logger.info(f"采访API返回: {api_result.get('interviews_count', 0)} 个结果, success={api_result.get('success')}")
-            
-            # 检查API调用是否成功
+
+            logger.info(f"Interview API returned: {api_result.get('interviews_count', 0)} results, success={api_result.get('success')}")
+
+            # Check if API call was successful
             if not api_result.get("success", False):
-                error_msg = api_result.get("error", "未知错误")
-                logger.warning(f"采访API返回失败: {error_msg}")
-                result.summary = f"采访API调用失败：{error_msg}。请检查OASIS模拟环境状态。"
+                error_msg = api_result.get("error", "Unknown error")
+                logger.warning(f"Interview API returned failure: {error_msg}")
+                result.summary = f"Interview API call failed: {error_msg}. Please check the OASIS simulation environment status."
                 return result
-            
-            # Step 5: 解析API返回结果，构建AgentInterview对象
-            # 双平台模式返回格式: {"twitter_0": {...}, "reddit_0": {...}, "twitter_1": {...}, ...}
+
+            # Step 5: Parse API response, build AgentInterview objects
+            # Dual-platform mode return format: {"twitter_0": {...}, "reddit_0": {...}, "twitter_1": {...}, ...}
             api_data = api_result.get("result", {})
             results_dict = api_data.get("results", {}) if isinstance(api_data, dict) else {}
-            
+
             for i, agent_idx in enumerate(selected_indices):
                 agent = selected_agents[i]
                 agent_name = agent.get("realname", agent.get("username", f"Agent_{agent_idx}"))
-                agent_role = agent.get("profession", "未知")
+                agent_role = agent.get("profession", "Unknown")
                 agent_bio = agent.get("bio", "")
-                
-                # 获取该Agent在两个平台的采访结果
+
+                # Get interview results for this Agent on both platforms
                 twitter_result = results_dict.get(f"twitter_{agent_idx}", {})
                 reddit_result = results_dict.get(f"reddit_{agent_idx}", {})
-                
+
                 twitter_response = twitter_result.get("response", "")
                 reddit_response = reddit_result.get("response", "")
 
-                # 清理可能的工具调用 JSON 包裹
+                # Clean up possible tool call JSON wrapping
                 twitter_response = self._clean_tool_call_response(twitter_response)
                 reddit_response = self._clean_tool_call_response(reddit_response)
 
-                # 始终输出双平台标记
-                twitter_text = twitter_response if twitter_response else "（该平台未获得回复）"
-                reddit_text = reddit_response if reddit_response else "（该平台未获得回复）"
-                response_text = f"【Twitter平台回答】\n{twitter_text}\n\n【Reddit平台回答】\n{reddit_text}"
+                # Always output dual-platform markers
+                twitter_text = twitter_response if twitter_response else "(No response on this platform)"
+                reddit_text = reddit_response if reddit_response else "(No response on this platform)"
+                response_text = f"[Twitter Platform Response]\n{twitter_text}\n\n[Reddit Platform Response]\n{reddit_text}"
 
-                # 提取关键引言（从两个平台的回答中）
+                # Extract key quotes (from both platform responses)
                 import re
                 combined_responses = f"{twitter_response} {reddit_response}"
 
-                # 清理响应文本：去掉标记、编号、Markdown 等干扰
+                # Clean response text: remove markers, numbering, Markdown and other noise
                 clean_text = re.sub(r'#{1,6}\s+', '', combined_responses)
                 clean_text = re.sub(r'\{[^}]*tool_name[^}]*\}', '', clean_text)
                 clean_text = re.sub(r'[*_`|>~\-]{2,}', '', clean_text)
-                clean_text = re.sub(r'问题\d+[：:]\s*', '', clean_text)
-                clean_text = re.sub(r'【[^】]+】', '', clean_text)
+                clean_text = re.sub(r'\u95ee\u9898\d+[\uff1a:]\s*', '', clean_text)
+                clean_text = re.sub(r'\u3010[^\u3011]+\u3011', '', clean_text)
 
-                # 策略1（主）: 提取完整的有实质内容的句子
-                sentences = re.split(r'[。！？]', clean_text)
+                # Strategy 1 (primary): Extract complete sentences with substantial content
+                sentences = re.split(r'[\u3002!?]', clean_text)
                 meaningful = [
                     s.strip() for s in sentences
                     if 20 <= len(s.strip()) <= 150
-                    and not re.match(r'^[\s\W，,；;：:、]+', s.strip())
-                    and not s.strip().startswith(('{', '问题'))
+                    and not re.match(r'^[\s\W\uff0c,;\uff1b\uff1a:\u3001]+', s.strip())
+                    and not s.strip().startswith(('{', '\u95ee\u9898'))
                 ]
                 meaningful.sort(key=len, reverse=True)
-                key_quotes = [s + "。" for s in meaningful[:3]]
+                key_quotes = [s + "\u3002" for s in meaningful[:3]]
 
-                # 策略2（补充）: 正确配对的中文引号「」内长文本
+                # Strategy 2 (supplementary): Properly paired Chinese quotation marks with long text
                 if not key_quotes:
                     paired = re.findall(r'\u201c([^\u201c\u201d]{15,100})\u201d', clean_text)
                     paired += re.findall(r'\u300c([^\u300c\u300d]{15,100})\u300d', clean_text)
-                    key_quotes = [q for q in paired if not re.match(r'^[，,；;：:、]', q)][:3]
-                
+                    key_quotes = [q for q in paired if not re.match(r'^[\uff0c,;\uff1b\uff1a:\u3001]', q)][:3]
+
                 interview = AgentInterview(
                     agent_name=agent_name,
                     agent_role=agent_role,
-                    agent_bio=agent_bio[:1000],  # 扩大bio长度限制
+                    agent_bio=agent_bio[:1000],  # Extended bio length limit
                     question=combined_prompt,
                     response=response_text,
                     key_quotes=key_quotes[:5]
                 )
                 result.interviews.append(interview)
-            
+
             result.interviewed_count = len(result.interviews)
-            
+
         except ValueError as e:
-            # 模拟环境未运行
-            logger.warning(f"采访API调用失败（环境未运行？）: {e}")
-            result.summary = f"采访失败：{str(e)}。模拟环境可能已关闭，请确保OASIS环境正在运行。"
+            # Simulation environment not running
+            logger.warning(f"Interview API call failed (environment not running?): {e}")
+            result.summary = f"Interview failed: {str(e)}. The simulation environment may be shut down. Please ensure the OASIS environment is running."
             return result
         except Exception as e:
-            logger.error(f"采访API调用异常: {e}")
+            logger.error(f"Interview API call exception: {e}")
             import traceback
             logger.error(traceback.format_exc())
-            result.summary = f"采访过程发生错误：{str(e)}"
+            result.summary = f"An error occurred during the interview: {str(e)}"
             return result
-        
-        # Step 6: 生成采访摘要
+
+        # Step 6: Generate interview summary
         if result.interviews:
             result.summary = self._generate_interview_summary(
                 interviews=result.interviews,
                 interview_requirement=interview_requirement
             )
-        
-        logger.info(f"InterviewAgents完成: 采访了 {result.interviewed_count} 个Agent（双平台）")
+
+        logger.info(f"InterviewAgents complete: Interviewed {result.interviewed_count} Agents (dual-platform)")
         return result
-    
+
     @staticmethod
     def _clean_tool_call_response(response: str) -> str:
-        """清理 Agent 回复中的 JSON 工具调用包裹，提取实际内容"""
+        """Clean JSON tool call wrapping from Agent responses, extract actual content"""
         if not response or not response.strip().startswith('{'):
             return response
         text = response.strip()
@@ -1309,51 +1309,51 @@ class GraphToolsService:
         return response
 
     def _load_agent_profiles(self, simulation_id: str) -> List[Dict[str, Any]]:
-        """加载模拟的Agent人设文件"""
+        """Load simulation Agent profile files"""
         import os
         import csv
-        
-        # 构建人设文件路径
+
+        # Build profile file path
         sim_dir = os.path.join(
-            os.path.dirname(__file__), 
+            os.path.dirname(__file__),
             f'../../uploads/simulations/{simulation_id}'
         )
-        
+
         profiles = []
-        
-        # 优先尝试读取Reddit JSON格式
+
+        # Prefer Reddit JSON format
         reddit_profile_path = os.path.join(sim_dir, "reddit_profiles.json")
         if os.path.exists(reddit_profile_path):
             try:
                 with open(reddit_profile_path, 'r', encoding='utf-8') as f:
                     profiles = json.load(f)
-                logger.info(f"从 reddit_profiles.json 加载了 {len(profiles)} 个人设")
+                logger.info(f"Loaded {len(profiles)} profiles from reddit_profiles.json")
                 return profiles
             except Exception as e:
-                logger.warning(f"读取 reddit_profiles.json 失败: {e}")
-        
-        # 尝试读取Twitter CSV格式
+                logger.warning(f"Failed to read reddit_profiles.json: {e}")
+
+        # Try Twitter CSV format
         twitter_profile_path = os.path.join(sim_dir, "twitter_profiles.csv")
         if os.path.exists(twitter_profile_path):
             try:
                 with open(twitter_profile_path, 'r', encoding='utf-8') as f:
                     reader = csv.DictReader(f)
                     for row in reader:
-                        # CSV格式转换为统一格式
+                        # Convert CSV format to unified format
                         profiles.append({
                             "realname": row.get("name", ""),
                             "username": row.get("username", ""),
                             "bio": row.get("description", ""),
                             "persona": row.get("user_char", ""),
-                            "profession": "未知"
+                            "profession": "Unknown"
                         })
-                logger.info(f"从 twitter_profiles.csv 加载了 {len(profiles)} 个人设")
+                logger.info(f"Loaded {len(profiles)} profiles from twitter_profiles.csv")
                 return profiles
             except Exception as e:
-                logger.warning(f"读取 twitter_profiles.csv 失败: {e}")
-        
+                logger.warning(f"Failed to read twitter_profiles.csv: {e}")
+
         return profiles
-    
+
     def _select_agents_for_interview(
         self,
         profiles: List[Dict[str, Any]],
@@ -1362,51 +1362,51 @@ class GraphToolsService:
         max_agents: int
     ) -> tuple:
         """
-        使用LLM选择要采访的Agent
-        
+        Use LLM to select Agents for interview
+
         Returns:
             tuple: (selected_agents, selected_indices, reasoning)
-                - selected_agents: 选中Agent的完整信息列表
-                - selected_indices: 选中Agent的索引列表（用于API调用）
-                - reasoning: 选择理由
+                - selected_agents: Complete information list of selected Agents
+                - selected_indices: Index list of selected Agents (for API calls)
+                - reasoning: Selection reasoning
         """
-        
-        # 构建Agent摘要列表
+
+        # Build Agent summary list
         agent_summaries = []
         for i, profile in enumerate(profiles):
             summary = {
                 "index": i,
                 "name": profile.get("realname", profile.get("username", f"Agent_{i}")),
-                "profession": profile.get("profession", "未知"),
+                "profession": profile.get("profession", "Unknown"),
                 "bio": profile.get("bio", "")[:200],
                 "interested_topics": profile.get("interested_topics", [])
             }
             agent_summaries.append(summary)
-        
-        system_prompt = """你是一个专业的采访策划专家。你的任务是根据采访需求，从模拟Agent列表中选择最适合采访的对象。
 
-选择标准：
-1. Agent的身份/职业与采访主题相关
-2. Agent可能持有独特或有价值的观点
-3. 选择多样化的视角（如：支持方、反对方、中立方、专业人士等）
-4. 优先选择与事件直接相关的角色
+        system_prompt = """You are a professional interview planning expert. Your task is to select the most suitable interview subjects from a list of simulated Agents based on the interview requirements.
 
-返回JSON格式：
+Selection criteria:
+1. Agent identity/profession is relevant to the interview topic
+2. Agent may hold unique or valuable viewpoints
+3. Select diverse perspectives (e.g.: supporters, opponents, neutrals, professionals, etc.)
+4. Prioritize roles directly related to the event
+
+Return in JSON format:
 {
-    "selected_indices": [选中Agent的索引列表],
-    "reasoning": "选择理由说明"
+    "selected_indices": [list of selected Agent indices],
+    "reasoning": "Explanation of selection reasoning"
 }"""
 
-        user_prompt = f"""采访需求：
+        user_prompt = f"""Interview requirement:
 {interview_requirement}
 
-模拟背景：
-{simulation_requirement if simulation_requirement else "未提供"}
+Simulation background:
+{simulation_requirement if simulation_requirement else "Not provided"}
 
-可选择的Agent列表（共{len(agent_summaries)}个）：
+Available Agent list ({len(agent_summaries)} total):
 {json.dumps(agent_summaries, ensure_ascii=False, indent=2)}
 
-请选择最多{max_agents}个最适合采访的Agent，并说明选择理由。"""
+Please select up to {max_agents} Agents most suitable for interview and explain your reasoning."""
 
         try:
             response = self.llm.chat_json(
@@ -1416,56 +1416,56 @@ class GraphToolsService:
                 ],
                 temperature=0.3
             )
-            
+
             selected_indices = response.get("selected_indices", [])[:max_agents]
-            reasoning = response.get("reasoning", "基于相关性自动选择")
-            
-            # 获取选中的Agent完整信息
+            reasoning = response.get("reasoning", "Auto-selected based on relevance")
+
+            # Get complete information for selected Agents
             selected_agents = []
             valid_indices = []
             for idx in selected_indices:
                 if 0 <= idx < len(profiles):
                     selected_agents.append(profiles[idx])
                     valid_indices.append(idx)
-            
+
             return selected_agents, valid_indices, reasoning
-            
+
         except Exception as e:
-            logger.warning(f"LLM选择Agent失败，使用默认选择: {e}")
-            # 降级：选择前N个
+            logger.warning(f"LLM agent selection failed, using default selection: {e}")
+            # Fallback: select the first N
             selected = profiles[:max_agents]
             indices = list(range(min(max_agents, len(profiles))))
-            return selected, indices, "使用默认选择策略"
-    
+            return selected, indices, "Using default selection strategy"
+
     def _generate_interview_questions(
         self,
         interview_requirement: str,
         simulation_requirement: str,
         selected_agents: List[Dict[str, Any]]
     ) -> List[str]:
-        """使用LLM生成采访问题"""
-        
-        agent_roles = [a.get("profession", "未知") for a in selected_agents]
-        
-        system_prompt = """你是一个专业的记者/采访者。根据采访需求，生成3-5个深度采访问题。
+        """Use LLM to generate interview questions"""
 
-问题要求：
-1. 开放性问题，鼓励详细回答
-2. 针对不同角色可能有不同答案
-3. 涵盖事实、观点、感受等多个维度
-4. 语言自然，像真实采访一样
-5. 每个问题控制在50字以内，简洁明了
-6. 直接提问，不要包含背景说明或前缀
+        agent_roles = [a.get("profession", "Unknown") for a in selected_agents]
 
-返回JSON格式：{"questions": ["问题1", "问题2", ...]}"""
+        system_prompt = """You are a professional journalist/interviewer. Based on the interview requirements, generate 3-5 in-depth interview questions.
 
-        user_prompt = f"""采访需求：{interview_requirement}
+Question requirements:
+1. Open-ended questions that encourage detailed answers
+2. Different roles may have different answers
+3. Cover facts, opinions, feelings and other dimensions
+4. Natural language, like a real interview
+5. Keep each question within 50 words, concise and clear
+6. Ask directly, do not include background explanations or prefixes
 
-模拟背景：{simulation_requirement if simulation_requirement else "未提供"}
+Return in JSON format: {"questions": ["question 1", "question 2", ...]}"""
 
-采访对象角色：{', '.join(agent_roles)}
+        user_prompt = f"""Interview requirement: {interview_requirement}
 
-请生成3-5个采访问题。"""
+Simulation background: {simulation_requirement if simulation_requirement else "Not provided"}
+
+Interviewee roles: {', '.join(agent_roles)}
+
+Please generate 3-5 interview questions."""
 
         try:
             response = self.llm.chat_json(
@@ -1475,54 +1475,54 @@ class GraphToolsService:
                 ],
                 temperature=0.5
             )
-            
-            return response.get("questions", [f"关于{interview_requirement}，您有什么看法？"])
-            
+
+            return response.get("questions", [f"What are your thoughts on {interview_requirement}?"])
+
         except Exception as e:
-            logger.warning(f"生成采访问题失败: {e}")
+            logger.warning(f"Failed to generate interview questions: {e}")
             return [
-                f"关于{interview_requirement}，您的观点是什么？",
-                "这件事对您或您所代表的群体有什么影响？",
-                "您认为应该如何解决或改进这个问题？"
+                f"What is your perspective on {interview_requirement}?",
+                "What impact does this have on you or the group you represent?",
+                "How do you think this issue should be addressed or improved?"
             ]
-    
+
     def _generate_interview_summary(
         self,
         interviews: List[AgentInterview],
         interview_requirement: str
     ) -> str:
-        """生成采访摘要"""
-        
+        """Generate interview summary"""
+
         if not interviews:
-            return "未完成任何采访"
-        
-        # 收集所有采访内容
+            return "No interviews were completed"
+
+        # Collect all interview content
         interview_texts = []
         for interview in interviews:
-            interview_texts.append(f"【{interview.agent_name}（{interview.agent_role}）】\n{interview.response[:500]}")
-        
-        system_prompt = """你是一个专业的新闻编辑。请根据多位受访者的回答，生成一份采访摘要。
+            interview_texts.append(f"[{interview.agent_name} ({interview.agent_role})]\n{interview.response[:500]}")
 
-摘要要求：
-1. 提炼各方主要观点
-2. 指出观点的共识和分歧
-3. 突出有价值的引言
-4. 客观中立，不偏袒任何一方
-5. 控制在1000字内
+        system_prompt = """You are a professional news editor. Please generate an interview summary based on the responses from multiple interviewees.
 
-格式约束（必须遵守）：
-- 使用纯文本段落，用空行分隔不同部分
-- 不要使用Markdown标题（如#、##、###）
-- 不要使用分割线（如---、***）
-- 引用受访者原话时使用中文引号「」
-- 可以使用**加粗**标记关键词，但不要使用其他Markdown语法"""
+Summary requirements:
+1. Extract the main viewpoints from each party
+2. Identify areas of consensus and disagreement
+3. Highlight valuable quotes
+4. Be objective and neutral, not favoring any side
+5. Keep within 1000 words
 
-        user_prompt = f"""采访主题：{interview_requirement}
+Format constraints (must follow):
+- Use plain text paragraphs, separated by blank lines between different sections
+- Do not use Markdown headings (e.g., #, ##, ###)
+- Do not use horizontal rules (e.g., ---, ***)
+- When quoting interviewees verbatim, use Chinese quotation marks \u300c\u300d
+- You may use **bold** to mark key words, but do not use other Markdown syntax"""
 
-采访内容：
+        user_prompt = f"""Interview topic: {interview_requirement}
+
+Interview content:
 {"".join(interview_texts)}
 
-请生成采访摘要。"""
+Please generate the interview summary."""
 
         try:
             summary = self.llm.chat(
@@ -1534,8 +1534,8 @@ class GraphToolsService:
                 max_tokens=800
             )
             return summary
-            
+
         except Exception as e:
-            logger.warning(f"生成采访摘要失败: {e}")
-            # 降级：简单拼接
-            return f"共采访了{len(interviews)}位受访者，包括：" + "、".join([i.agent_name for i in interviews])
+            logger.warning(f"Failed to generate interview summary: {e}")
+            # Fallback: simple concatenation
+            return f"Interviewed {len(interviews)} interviewees, including: " + ", ".join([i.agent_name for i in interviews])

@@ -1,6 +1,6 @@
 """
-图谱构建服务
-使用本地 PostgreSQL + LLM 构建知识图谱
+Graph construction service
+Build knowledge graph using local PostgreSQL + LLM
 """
 
 import os
@@ -21,7 +21,7 @@ from .text_processor import TextProcessor
 
 @dataclass
 class GraphInfo:
-    """图谱信息"""
+    """Graph information"""
     graph_id: str
     node_count: int
     edge_count: int
@@ -38,8 +38,8 @@ class GraphInfo:
 
 class GraphBuilderService:
     """
-    图谱构建服务
-    使用 GraphStore + EntityExtractor + ExtractionWorker 替代 Zep Cloud
+    Graph construction service
+    Uses GraphStore + EntityExtractor + ExtractionWorker to replace Zep Cloud
     """
 
     def __init__(self):
@@ -58,20 +58,20 @@ class GraphBuilderService:
         batch_size: int = 3
     ) -> str:
         """
-        异步构建图谱
+        Build graph asynchronously
 
         Args:
-            text: 输入文本
-            ontology: 本体定义（来自接口1的输出）
-            graph_name: 图谱名称
-            chunk_size: 文本块大小
-            chunk_overlap: 块重叠大小
-            batch_size: 每批发送的块数量
+            text: Input text
+            ontology: Ontology definition (output from interface 1)
+            graph_name: Graph name
+            chunk_size: Text chunk size
+            chunk_overlap: Chunk overlap size
+            batch_size: Number of chunks per batch
 
         Returns:
-            任务ID
+            Task ID
         """
-        # 创建任务
+        # Create task
         task_id = self.task_manager.create_task(
             task_type="graph_build",
             metadata={
@@ -81,7 +81,7 @@ class GraphBuilderService:
             }
         )
 
-        # 在后台线程中执行构建
+        # Execute build in background thread
         thread = threading.Thread(
             target=self._build_graph_worker,
             args=(task_id, text, ontology, graph_name, chunk_size, chunk_overlap, batch_size)
@@ -101,41 +101,41 @@ class GraphBuilderService:
         chunk_overlap: int,
         batch_size: int
     ):
-        """图谱构建工作线程"""
+        """Graph build worker thread"""
         try:
             self.task_manager.update_task(
                 task_id,
                 status=TaskStatus.PROCESSING,
                 progress=5,
-                message="开始构建图谱..."
+                message="Starting graph build..."
             )
 
-            # 1. 创建图谱
+            # 1. Create graph
             graph_id = self.create_graph(graph_name)
             self.task_manager.update_task(
                 task_id,
                 progress=10,
-                message=f"图谱已创建: {graph_id}"
+                message=f"Graph created: {graph_id}"
             )
 
-            # 2. 设置本体
+            # 2. Set ontology
             self.set_ontology(graph_id, ontology)
             self.task_manager.update_task(
                 task_id,
                 progress=15,
-                message="本体已设置"
+                message="Ontology set"
             )
 
-            # 3. 文本分块
+            # 3. Split text into chunks
             chunks = TextProcessor.split_text(text, chunk_size, chunk_overlap)
             total_chunks = len(chunks)
             self.task_manager.update_task(
                 task_id,
                 progress=20,
-                message=f"文本已分割为 {total_chunks} 个块"
+                message=f"Text split into {total_chunks} chunks"
             )
 
-            # 4. 分批添加文本
+            # 4. Add text in batches
             self.add_text_batches(
                 graph_id, chunks, batch_size,
                 lambda msg, prog: self.task_manager.update_task(
@@ -145,11 +145,11 @@ class GraphBuilderService:
                 )
             )
 
-            # 5. 通过LLM处理所有episodes
+            # 5. Process all episodes via LLM
             self.task_manager.update_task(
                 task_id,
                 progress=60,
-                message="通过LLM提取实体和关系..."
+                message="Extracting entities and relations via LLM..."
             )
 
             self.worker.wait_for_episodes(
@@ -161,16 +161,16 @@ class GraphBuilderService:
                 )
             )
 
-            # 6. 获取图谱信息
+            # 6. Get graph information
             self.task_manager.update_task(
                 task_id,
                 progress=90,
-                message="获取图谱信息..."
+                message="Getting graph information..."
             )
 
             graph_info = self._get_graph_info(graph_id)
 
-            # 完成
+            # Done
             self.task_manager.complete_task(task_id, {
                 "graph_id": graph_id,
                 "graph_info": graph_info.to_dict(),
@@ -183,7 +183,7 @@ class GraphBuilderService:
             self.task_manager.fail_task(task_id, error_msg)
 
     def create_graph(self, name: str) -> str:
-        """创建图谱"""
+        """Create graph"""
         graph_id = f"mirofish_{uuid.uuid4().hex[:16]}"
         self.store.create_graph(
             graph_id=graph_id,
@@ -193,7 +193,7 @@ class GraphBuilderService:
         return graph_id
 
     def set_ontology(self, graph_id: str, ontology: Dict[str, Any]):
-        """设置图谱本体"""
+        """Set graph ontology"""
         self.store.set_ontology(graph_id, ontology)
 
     def add_text_batches(
@@ -203,7 +203,7 @@ class GraphBuilderService:
         batch_size: int = 3,
         progress_callback: Optional[Callable] = None
     ) -> List[str]:
-        """分批添加文本到图谱，返回所有 episode 的 uuid 列表"""
+        """Add text to graph in batches, returns list of all episode UUIDs"""
         episode_uuids = []
         total_chunks = len(chunks)
 
@@ -215,11 +215,11 @@ class GraphBuilderService:
             if progress_callback:
                 progress = (i + len(batch_chunks)) / total_chunks
                 progress_callback(
-                    f"添加第 {batch_num}/{total_batches} 批数据 ({len(batch_chunks)} 块)...",
+                    f"Adding batch {batch_num}/{total_batches} ({len(batch_chunks)} chunks)...",
                     progress
                 )
 
-            # 添加episodes到数据库
+            # Add episodes to database
             uuids = self.store.add_episode_batch(graph_id, batch_chunks)
             episode_uuids.extend(uuids)
 
@@ -231,11 +231,11 @@ class GraphBuilderService:
         progress_callback: Optional[Callable] = None,
         timeout: int = 600
     ):
-        """等待所有 episode 处理完成"""
+        """Wait for all episodes to finish processing"""
         self.worker.wait_for_episodes(graph_id, progress_callback, timeout)
 
     def _get_graph_info(self, graph_id: str) -> GraphInfo:
-        """获取图谱信息"""
+        """Get graph information"""
         stats = self.store.get_graph_statistics(graph_id)
 
         return GraphInfo(
@@ -247,18 +247,18 @@ class GraphBuilderService:
 
     def get_graph_data(self, graph_id: str) -> Dict[str, Any]:
         """
-        获取完整图谱数据（包含详细信息）
+        Get complete graph data (with detailed information)
 
         Args:
-            graph_id: 图谱ID
+            graph_id: Graph ID
 
         Returns:
-            包含nodes和edges的字典
+            Dictionary containing nodes and edges
         """
         nodes = self.store.get_all_nodes(graph_id)
         edges = self.store.get_all_edges(graph_id)
 
-        # 创建节点映射用于获取节点名称
+        # Create node mapping for retrieving node names
         node_map = {}
         for node in nodes:
             node_map[node["uuid"]] = node["name"] or ""
@@ -302,5 +302,5 @@ class GraphBuilderService:
         }
 
     def delete_graph(self, graph_id: str):
-        """删除图谱"""
+        """Delete graph"""
         self.store.delete_graph(graph_id)

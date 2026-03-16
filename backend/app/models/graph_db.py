@@ -1,5 +1,5 @@
 """
-图谱数据库模型
+Graph database models
 SQLAlchemy ORM models for graph storage (nodes, edges, episodes, ontology)
 """
 
@@ -22,7 +22,7 @@ Base = declarative_base()
 
 
 class Graph(Base):
-    """图谱元数据"""
+    """Graph metadata"""
     __tablename__ = 'graphs'
 
     graph_id = Column(String(64), primary_key=True)
@@ -37,7 +37,7 @@ class Graph(Base):
 
 
 class Node(Base):
-    """实体节点"""
+    """Entity node"""
     __tablename__ = 'nodes'
 
     uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -59,7 +59,7 @@ class Node(Base):
 
 
 class Edge(Base):
-    """关系边"""
+    """Relationship edge"""
     __tablename__ = 'edges'
 
     uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -86,7 +86,7 @@ class Edge(Base):
 
 
 class Episode(Base):
-    """文本块（用于实体提取）"""
+    """Text chunk (for entity extraction)"""
     __tablename__ = 'episodes'
 
     uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

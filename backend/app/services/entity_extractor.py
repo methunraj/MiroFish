@@ -50,7 +50,7 @@ class EntityExtractor:
             # Call LLM
             response = self.llm.chat_json(
                 messages=[
-                    {"role": "system", "content": "你是一个知识图谱实体和关系提取专家。从文本中精确提取实体和关系，返回纯JSON格式。"},
+                    {"role": "system", "content": "You are a knowledge graph entity and relationship extraction expert. Precisely extract entities and relationships from text and return pure JSON format."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.3,
@@ -184,7 +184,7 @@ class EntityExtractor:
 
         response = self.llm.chat_json(
             messages=[
-                {"role": "system", "content": "你是一个知识图谱实体和关系提取专家。从文本中精确提取实体和关系，返回纯JSON格式。"},
+                {"role": "system", "content": "You are a knowledge graph entity and relationship extraction expert. Precisely extract entities and relationships from text and return pure JSON format."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.3,
@@ -248,43 +248,43 @@ class EntityExtractor:
         """Build extraction prompt"""
         type_hint = ""
         if entity_types:
-            type_hint += f"\n已定义的实体类型: {', '.join(entity_types)}"
+            type_hint += f"\nDefined entity types: {', '.join(entity_types)}"
         if edge_types:
-            type_hint += f"\n已定义的关系类型: {', '.join(edge_types)}"
+            type_hint += f"\nDefined relationship types: {', '.join(edge_types)}"
 
-        return f"""请从以下文本中提取所有实体和它们之间的关系。
+        return f"""Please extract all entities and their relationships from the following text.
 
 {type_hint}
 
-## 文本内容
+## Text Content
 {text}
 
-## 输出要求
-请返回JSON格式（不要markdown代码块）：
+## Output Requirements
+Return JSON format (no markdown code blocks):
 {{
     "entities": [
         {{
-            "name": "实体名称",
-            "type": "实体类型",
-            "summary": "实体简要描述",
+            "name": "Entity name",
+            "type": "Entity type",
+            "summary": "Brief entity description",
             "attributes": {{}}
         }}
     ],
     "relationships": [
         {{
-            "source": "源实体名称",
-            "target": "目标实体名称",
-            "source_type": "源实体类型（可选）",
-            "target_type": "目标实体类型（可选）",
-            "type": "关系类型",
-            "fact": "关系事实描述",
+            "source": "Source entity name",
+            "target": "Target entity name",
+            "source_type": "Source entity type (optional)",
+            "target_type": "Target entity type (optional)",
+            "type": "Relationship type",
+            "fact": "Relationship fact description",
             "attributes": {{}}
         }}
     ]
 }}
 
-注意：
-1. 实体名称必须是文本中出现的原始名称，不要编造
-2. type字段如果匹配已定义的类型就使用，否则自行判断合适的类型
-3. 每个关系必须有明确的source和target
-4. fact字段应该是一个完整的事实描述句"""
+Notes:
+1. Entity names must be the original names as they appear in the text, do not fabricate
+2. For the type field, use the defined types if they match, otherwise determine an appropriate type
+3. Each relationship must have a clear source and target
+4. The fact field should be a complete factual description sentence"""

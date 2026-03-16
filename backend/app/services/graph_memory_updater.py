@@ -1,6 +1,6 @@
 """
-图谱记忆更新服务
-将模拟中的Agent活动动态更新到图谱中
+Graph Memory Update Service
+Dynamically updates the graph with agent activities from the simulation
 """
 
 import os
@@ -22,7 +22,7 @@ logger = get_logger('mirofish.graph_memory_updater')
 
 @dataclass
 class AgentActivity:
-    """Agent活动记录"""
+    """Agent activity record"""
     platform: str           # twitter / reddit
     agent_id: int
     agent_name: str
@@ -33,9 +33,9 @@ class AgentActivity:
 
     def to_episode_text(self) -> str:
         """
-        将活动转换为文本描述
+        Convert an activity to a text description
 
-        采用自然语言描述格式，让LLM能够从中提取实体和关系
+        Uses a natural language description format so the LLM can extract entities and relationships from it
         """
         action_descriptions = {
             "CREATE_POST": self._describe_create_post,
@@ -60,41 +60,41 @@ class AgentActivity:
     def _describe_create_post(self) -> str:
         content = self.action_args.get("content", "")
         if content:
-            return f"发布了一条帖子：「{content}」"
-        return "发布了一条帖子"
+            return f'Posted: "{content}"'
+        return "Posted"
 
     def _describe_like_post(self) -> str:
         post_content = self.action_args.get("post_content", "")
         post_author = self.action_args.get("post_author_name", "")
         if post_content and post_author:
-            return f"点赞了{post_author}的帖子：「{post_content}」"
+            return f'Liked {post_author}\'s post: "{post_content}"'
         elif post_content:
-            return f"点赞了一条帖子：「{post_content}」"
+            return f'Liked a post: "{post_content}"'
         elif post_author:
-            return f"点赞了{post_author}的一条帖子"
-        return "点赞了一条帖子"
+            return f"Liked {post_author}'s post"
+        return "Liked a post"
 
     def _describe_dislike_post(self) -> str:
         post_content = self.action_args.get("post_content", "")
         post_author = self.action_args.get("post_author_name", "")
         if post_content and post_author:
-            return f"踩了{post_author}的帖子：「{post_content}」"
+            return f'Disliked {post_author}\'s post: "{post_content}"'
         elif post_content:
-            return f"踩了一条帖子：「{post_content}」"
+            return f'Disliked a post: "{post_content}"'
         elif post_author:
-            return f"踩了{post_author}的一条帖子"
-        return "踩了一条帖子"
+            return f"Disliked {post_author}'s post"
+        return "Disliked a post"
 
     def _describe_repost(self) -> str:
         original_content = self.action_args.get("original_content", "")
         original_author = self.action_args.get("original_author_name", "")
         if original_content and original_author:
-            return f"转发了{original_author}的帖子：「{original_content}」"
+            return f'Reposted {original_author}\'s post: "{original_content}"'
         elif original_content:
-            return f"转发了一条帖子：「{original_content}」"
+            return f'Reposted: "{original_content}"'
         elif original_author:
-            return f"转发了{original_author}的一条帖子"
-        return "转发了一条帖子"
+            return f"Reposted {original_author}'s post"
+        return "Reposted"
 
     def _describe_quote_post(self) -> str:
         original_content = self.action_args.get("original_content", "")
@@ -103,23 +103,23 @@ class AgentActivity:
 
         base = ""
         if original_content and original_author:
-            base = f"引用了{original_author}的帖子「{original_content}」"
+            base = f'Quoted {original_author}\'s post "{original_content}"'
         elif original_content:
-            base = f"引用了一条帖子「{original_content}」"
+            base = f'Quoted a post "{original_content}"'
         elif original_author:
-            base = f"引用了{original_author}的一条帖子"
+            base = f"Quoted {original_author}'s post"
         else:
-            base = "引用了一条帖子"
+            base = "Quoted a post"
 
         if quote_content:
-            base += f"，并评论道：「{quote_content}」"
+            base += f', and commented: "{quote_content}"'
         return base
 
     def _describe_follow(self) -> str:
         target_user_name = self.action_args.get("target_user_name", "")
         if target_user_name:
-            return f"关注了用户「{target_user_name}」"
-        return "关注了一个用户"
+            return f'Followed user "{target_user_name}"'
+        return "Followed a user"
 
     def _describe_create_comment(self) -> str:
         content = self.action_args.get("content", "")
@@ -127,67 +127,67 @@ class AgentActivity:
         post_author = self.action_args.get("post_author_name", "")
         if content:
             if post_content and post_author:
-                return f"在{post_author}的帖子「{post_content}」下评论道：「{content}」"
+                return f'Commented on {post_author}\'s post "{post_content}": "{content}"'
             elif post_content:
-                return f"在帖子「{post_content}」下评论道：「{content}」"
+                return f'Commented on post "{post_content}": "{content}"'
             elif post_author:
-                return f"在{post_author}的帖子下评论道：「{content}」"
-            return f"评论道：「{content}」"
-        return "发表了评论"
+                return f'Commented on {post_author}\'s post: "{content}"'
+            return f'Commented: "{content}"'
+        return "Posted a comment"
 
     def _describe_like_comment(self) -> str:
         comment_content = self.action_args.get("comment_content", "")
         comment_author = self.action_args.get("comment_author_name", "")
         if comment_content and comment_author:
-            return f"点赞了{comment_author}的评论：「{comment_content}」"
+            return f'Liked {comment_author}\'s comment: "{comment_content}"'
         elif comment_content:
-            return f"点赞了一条评论：「{comment_content}」"
+            return f'Liked a comment: "{comment_content}"'
         elif comment_author:
-            return f"点赞了{comment_author}的一条评论"
-        return "点赞了一条评论"
+            return f"Liked {comment_author}'s comment"
+        return "Liked a comment"
 
     def _describe_dislike_comment(self) -> str:
         comment_content = self.action_args.get("comment_content", "")
         comment_author = self.action_args.get("comment_author_name", "")
         if comment_content and comment_author:
-            return f"踩了{comment_author}的评论：「{comment_content}」"
+            return f'Disliked {comment_author}\'s comment: "{comment_content}"'
         elif comment_content:
-            return f"踩了一条评论：「{comment_content}」"
+            return f'Disliked a comment: "{comment_content}"'
         elif comment_author:
-            return f"踩了{comment_author}的一条评论"
-        return "踩了一条评论"
+            return f"Disliked {comment_author}'s comment"
+        return "Disliked a comment"
 
     def _describe_search(self) -> str:
         query = self.action_args.get("query", "") or self.action_args.get("keyword", "")
-        return f"搜索了「{query}」" if query else "进行了搜索"
+        return f'Searched for "{query}"' if query else "Performed a search"
 
     def _describe_search_user(self) -> str:
         query = self.action_args.get("query", "") or self.action_args.get("username", "")
-        return f"搜索了用户「{query}」" if query else "搜索了用户"
+        return f'Searched for user "{query}"' if query else "Searched for a user"
 
     def _describe_mute(self) -> str:
         target_user_name = self.action_args.get("target_user_name", "")
         if target_user_name:
-            return f"屏蔽了用户「{target_user_name}」"
-        return "屏蔽了一个用户"
+            return f'Muted user "{target_user_name}"'
+        return "Muted a user"
 
     def _describe_generic(self) -> str:
-        return f"执行了{self.action_type}操作"
+        return f"Performed action {self.action_type}"
 
 
 class GraphMemoryUpdater:
     """
-    图谱记忆更新器
+    Graph Memory Updater
 
-    监控模拟的actions日志文件，将新的agent活动实时更新到图谱中。
-    按平台分组，每累积BATCH_SIZE条活动后批量发送。
+    Monitors the simulation's actions log file and updates the graph in real time with new agent activities.
+    Groups by platform and sends in batches once BATCH_SIZE activities have accumulated.
     """
 
     BATCH_SIZE = 5
 
     PLATFORM_DISPLAY_NAMES = {
-        'twitter': '世界1',
-        'reddit': '世界2',
+        'twitter': 'World 1',
+        'reddit': 'World 2',
     }
 
     SEND_INTERVAL = 0.5
@@ -217,7 +217,7 @@ class GraphMemoryUpdater:
         self._failed_count = 0
         self._skipped_count = 0
 
-        logger.info(f"GraphMemoryUpdater 初始化完成: graph_id={graph_id}, batch_size={self.BATCH_SIZE}")
+        logger.info(f"GraphMemoryUpdater initialized: graph_id={graph_id}, batch_size={self.BATCH_SIZE}")
 
     def _get_platform_display_name(self, platform: str) -> str:
         return self.PLATFORM_DISPLAY_NAMES.get(platform.lower(), platform)
@@ -233,7 +233,7 @@ class GraphMemoryUpdater:
             name=f"GraphMemoryUpdater-{self.graph_id[:8]}"
         )
         self._worker_thread.start()
-        logger.info(f"GraphMemoryUpdater 已启动: graph_id={self.graph_id}")
+        logger.info(f"GraphMemoryUpdater started: graph_id={self.graph_id}")
 
     def stop(self):
         self._running = False
@@ -242,7 +242,7 @@ class GraphMemoryUpdater:
         if self._worker_thread and self._worker_thread.is_alive():
             self._worker_thread.join(timeout=10)
 
-        logger.info(f"GraphMemoryUpdater 已停止: graph_id={self.graph_id}, "
+        logger.info(f"GraphMemoryUpdater stopped: graph_id={self.graph_id}, "
                    f"total_activities={self._total_activities}, "
                    f"batches_sent={self._total_sent}, "
                    f"items_sent={self._total_items_sent}, "
@@ -256,7 +256,7 @@ class GraphMemoryUpdater:
 
         self._activity_queue.put(activity)
         self._total_activities += 1
-        logger.debug(f"添加活动到队列: {activity.agent_name} - {activity.action_type}")
+        logger.debug(f"Added activity to queue: {activity.agent_name} - {activity.action_type}")
 
     def add_activity_from_dict(self, data: Dict[str, Any], platform: str):
         if "event_type" in data:
@@ -296,7 +296,7 @@ class GraphMemoryUpdater:
                     pass
 
             except Exception as e:
-                logger.error(f"工作循环异常: {e}")
+                logger.error(f"Worker loop exception: {e}")
                 time.sleep(1)
 
     def _send_batch_activities(self, activities: List[AgentActivity], platform: str):
@@ -315,15 +315,15 @@ class GraphMemoryUpdater:
                 self._total_sent += 1
                 self._total_items_sent += len(activities)
                 display_name = self._get_platform_display_name(platform)
-                logger.info(f"成功批量发送 {len(activities)} 条{display_name}活动到图谱 {self.graph_id}")
+                logger.info(f"Successfully batch-sent {len(activities)} {display_name} activities to graph {self.graph_id}")
                 return
 
             except Exception as e:
                 if attempt < self.MAX_RETRIES - 1:
-                    logger.warning(f"批量发送失败 (尝试 {attempt + 1}/{self.MAX_RETRIES}): {e}")
+                    logger.warning(f"Batch send failed (attempt {attempt + 1}/{self.MAX_RETRIES}): {e}")
                     time.sleep(self.RETRY_DELAY * (attempt + 1))
                 else:
-                    logger.error(f"批量发送失败，已重试{self.MAX_RETRIES}次: {e}")
+                    logger.error(f"Batch send failed after {self.MAX_RETRIES} retries: {e}")
                     self._failed_count += 1
 
     def _flush_remaining(self):
@@ -342,7 +342,7 @@ class GraphMemoryUpdater:
             for platform, buffer in self._platform_buffers.items():
                 if buffer:
                     display_name = self._get_platform_display_name(platform)
-                    logger.info(f"发送{display_name}平台剩余的 {len(buffer)} 条活动")
+                    logger.info(f"Sending {len(buffer)} remaining {display_name} platform activities")
                     self._send_batch_activities(buffer, platform)
             for platform in self._platform_buffers:
                 self._platform_buffers[platform] = []
@@ -367,7 +367,7 @@ class GraphMemoryUpdater:
 
 class GraphMemoryManager:
     """
-    管理多个模拟的图谱记忆更新器
+    Manages graph memory updaters for multiple simulations
     """
 
     _updaters: Dict[str, GraphMemoryUpdater] = {}
@@ -383,7 +383,7 @@ class GraphMemoryManager:
             updater.start()
             cls._updaters[simulation_id] = updater
 
-            logger.info(f"创建图谱记忆更新器: simulation_id={simulation_id}, graph_id={graph_id}")
+            logger.info(f"Created graph memory updater: simulation_id={simulation_id}, graph_id={graph_id}")
             return updater
 
     @classmethod
@@ -396,7 +396,7 @@ class GraphMemoryManager:
             if simulation_id in cls._updaters:
                 cls._updaters[simulation_id].stop()
                 del cls._updaters[simulation_id]
-                logger.info(f"已停止图谱记忆更新器: simulation_id={simulation_id}")
+                logger.info(f"Stopped graph memory updater: simulation_id={simulation_id}")
 
     _stop_all_done = False
 
@@ -412,9 +412,9 @@ class GraphMemoryManager:
                     try:
                         updater.stop()
                     except Exception as e:
-                        logger.error(f"停止更新器失败: simulation_id={simulation_id}, error={e}")
+                        logger.error(f"Failed to stop updater: simulation_id={simulation_id}, error={e}")
                 cls._updaters.clear()
-            logger.info("已停止所有图谱记忆更新器")
+            logger.info("Stopped all graph memory updaters")
 
     @classmethod
     def get_all_stats(cls) -> Dict[str, Dict[str, Any]]:
