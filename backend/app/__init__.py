@@ -11,6 +11,7 @@ warnings.filterwarnings("ignore", message=".*resource_tracker.*")
 
 from flask import Flask, request
 from flask_cors import CORS
+from sqlalchemy import text
 
 from .config import Config
 from .utils.logger import setup_logger, get_logger
@@ -41,6 +42,17 @@ def create_app(config_class=Config):
     
     # 启用CORS
     CORS(app, resources={r"/api/*": {"origins": "*"}})
+
+    # 初始化数据库（创建表）
+    from .models.graph_db import init_db
+    try:
+        init_db()
+        if should_log_startup:
+            logger.info("数据库初始化完成")
+    except Exception as e:
+        logger.error(f"数据库初始化失败: {e}")
+        if should_log_startup:
+            logger.error("请确保PostgreSQL已启动: docker compose up -d postgres")
     
     # 注册模拟进程清理函数（确保服务器关闭时终止所有模拟进程）
     from .services.simulation_runner import SimulationRunner
@@ -71,7 +83,13 @@ def create_app(config_class=Config):
     # 健康检查
     @app.route('/health')
     def health():
-        return {'status': 'ok', 'service': 'MiroFish Backend'}
+        try:
+            from .models.graph_db import get_db_session
+            with next(get_db_session()) as session:
+                session.execute(text("SELECT 1"))
+            return {'status': 'ok', 'service': 'MiroFish Backend', 'database': 'connected'}
+        except Exception as e:
+            return {'status': 'error', 'service': 'MiroFish Backend', 'database': 'disconnected', 'error': str(e)}, 503
     
     if should_log_startup:
         logger.info("MiroFish Backend 启动完成")

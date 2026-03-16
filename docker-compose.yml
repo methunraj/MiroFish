@@ -1,4 +1,22 @@
 services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: mirofish-postgres
+    environment:
+      POSTGRES_DB: mirofish
+      POSTGRES_USER: mirofish
+      POSTGRES_PASSWORD: mirofish_secret
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mirofish"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   mirofish:
     image: ghcr.io/666ghj/mirofish:latest
     # 加速镜像（如拉取缓慢可替换上方地址）
@@ -12,3 +30,9 @@ services:
     restart: unless-stopped
     volumes:
       - ./backend/uploads:/app/backend/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

@@ -360,10 +360,6 @@ class OntologyGenerator:
             '由MiroFish自动生成，用于社会舆论模拟',
             '"""',
             '',
-            'from pydantic import Field',
-            'from zep_cloud.external_clients.ontology import EntityModel, EntityText, EdgeModel',
-            '',
-            '',
             '# ============== 实体类型定义 ==============',
             '',
         ]
