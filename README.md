@@ -1,24 +1,12 @@
 <div align="center">
 
-<img src="./static/image/MiroFish_logo_compressed.jpeg" alt="MiroFish Logo" width="75%"/>
-
-<a href="https://trendshift.io/repositories/16144" target="_blank"><img src="https://trendshift.io/api/badge/repositories/16144" alt="666ghj%2FMiroFish | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
+<img src="./static/image/ParallelWorld_logo_compressed.jpeg" alt="Parallel World Logo" width="75%"/>
 
 A Simple and Universal Swarm Intelligence Engine, Predicting Anything
 </br>
 <em>A Simple and Universal Swarm Intelligence Engine, Predicting Anything</em>
 
-<a href="https://www.shanda.com/" target="_blank"><img src="./static/image/shanda_logo.png" alt="666ghj%2MiroFish | Shanda" height="40"/></a>
-
-[![GitHub Stars](https://img.shields.io/github/stars/666ghj/MiroFish?style=flat-square&color=DAA520)](https://github.com/666ghj/MiroFish/stargazers)
-[![GitHub Watchers](https://img.shields.io/github/watchers/666ghj/MiroFish?style=flat-square)](https://github.com/666ghj/MiroFish/watchers)
-[![GitHub Forks](https://img.shields.io/github/forks/666ghj/MiroFish?style=flat-square)](https://github.com/666ghj/MiroFish/network)
 [![Docker](https://img.shields.io/badge/Docker-Build-2496ED?style=flat-square&logo=docker&logoColor=white)](https://hub.docker.com/)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/666ghj/MiroFish)
-
-[![Discord](https://img.shields.io/badge/Discord-Join-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.com/channels/1469200078932545606/1469201282077163739)
-[![X](https://img.shields.io/badge/X-Follow-000000?style=flat-square&logo=x&logoColor=white)](https://x.com/mirofish_ai)
-[![Instagram](https://img.shields.io/badge/Instagram-Follow-E4405F?style=flat-square&logo=instagram&logoColor=white)](https://www.instagram.com/mirofish_ai/)
 
 [English](./README.md)
 
@@ -26,23 +14,19 @@ A Simple and Universal Swarm Intelligence Engine, Predicting Anything
 
 ## ⚡ Project Overview
 
-**MiroFish** is a next-generation AI prediction engine based on multi-agent technology. By extracting real-world seed information (such as breaking news, policy drafts, financial signals), it automatically constructs a high-fidelity parallel digital world. Within this space, tens of thousands of agents with independent personalities, long-term memory, and behavioral logic freely interact and undergo social evolution. You can dynamically inject variables through a "God's-eye view" to precisely forecast future trajectories — **rehearse the future in a digital sandbox, and empower decisions to prevail after hundreds of simulated battles**.
+**Parallel World** is a next-generation AI prediction engine based on multi-agent technology. By extracting real-world seed information (such as breaking news, policy drafts, financial signals), it automatically constructs a high-fidelity parallel digital world. Within this space, tens of thousands of agents with independent personalities, long-term memory, and behavioral logic freely interact and undergo social evolution. You can dynamically inject variables through a "God's-eye view" to precisely forecast future trajectories — **rehearse the future in a digital sandbox, and empower decisions to prevail after hundreds of simulated battles**.
 
 > All you need to do: upload seed materials (data analysis reports or interesting novels), and describe your prediction needs in natural language</br>
-> MiroFish will return: a detailed prediction report, along with a deeply interactive high-fidelity digital world
+> Parallel World will return: a detailed prediction report, along with a deeply interactive high-fidelity digital world
 
 ### Our Vision
 
-MiroFish is dedicated to building a collective intelligence mirror that maps reality, capturing group emergence triggered by individual interactions to break through the limitations of traditional prediction:
+Parallel World is dedicated to building a collective intelligence mirror that maps reality, capturing group emergence triggered by individual interactions to break through the limitations of traditional prediction:
 
 - **At the macro level**: We are a rehearsal lab for decision-makers, enabling policies and public relations to be tested in a zero-risk environment
 - **At the micro level**: We are a creative sandbox for individual users, whether exploring novel endings or brainstorming ideas — all fun, engaging, and accessible
 
 From serious forecasting to entertaining simulations, we let every "what if" see its result, making it possible to predict anything.
-
-## 🌐 Online Demo
-
-Welcome to our online demo environment and experience a prediction simulation on a trending public opinion event: [mirofish-live-demo](https://666ghj.github.io/mirofish-demo/)
 
 ## 📸 Screenshots
 
@@ -65,10 +49,10 @@ Welcome to our online demo environment and experience a prediction simulation on
 
 ## 🎬 Demo Videos
 
-### 1. Wuhan University Public Opinion Prediction + MiroFish Project Overview
+### 1. Wuhan University Public Opinion Prediction + Parallel World Project Overview
 
 <div align="center">
-<a href="https://www.bilibili.com/video/BV1VYBsBHEMY/" target="_blank"><img src="./static/image/武大模拟演示封面.png" alt="MiroFish Demo Video" width="75%"/></a>
+<a href="https://www.bilibili.com/video/BV1VYBsBHEMY/" target="_blank"><img src="./static/image/武大模拟演示封面.png" alt="Parallel World Demo Video" width="75%"/></a>
 
 Click the image to watch the full demo video of prediction using the Wuhan University public opinion report generated by BettaFish
 </div>
@@ -76,9 +60,9 @@ Click the image to watch the full demo video of prediction using the Wuhan Unive
 ### 2. Predicting the Lost Ending of "Dream of the Red Chamber"
 
 <div align="center">
-<a href="https://www.bilibili.com/video/BV1cPk3BBExq" target="_blank"><img src="./static/image/红楼梦模拟推演封面.jpg" alt="MiroFish Demo Video" width="75%"/></a>
+<a href="https://www.bilibili.com/video/BV1cPk3BBExq" target="_blank"><img src="./static/image/红楼梦模拟推演封面.jpg" alt="Parallel World Demo Video" width="75%"/></a>
 
-Click the image to watch MiroFish deeply predict the lost ending based on hundreds of thousands of words from the first 80 chapters of "Dream of the Red Chamber"
+Click the image to watch Parallel World deeply predict the lost ending based on hundreds of thousands of words from the first 80 chapters of "Dream of the Red Chamber"
 </div>
 
 > **Financial forecasting**, **current affairs prediction**, and other examples are being updated gradually...
@@ -184,20 +168,10 @@ By default, it reads the `.env` file in the root directory and maps ports `3000 
 
 &nbsp;
 
-The MiroFish team is recruiting full-time and intern positions. If you are interested in multi-agent applications, feel free to send your resume to: **mirofish@shanda.com**
+The Parallel World team is recruiting full-time and intern positions. If you are interested in multi-agent applications, feel free to send your resume to: **parallelworld@shanda.com**
 
 ## 📄 Acknowledgements
 
-**MiroFish has received strategic support and incubation from Shanda Group!**
+**Parallel World has received strategic support and incubation from Shanda Group!**
 
-MiroFish's simulation engine is powered by **[OASIS](https://github.com/camel-ai/oasis)**, and we sincerely thank the CAMEL-AI team for their open-source contribution!
-
-## 📈 Project Statistics
-
-<a href="https://www.star-history.com/#666ghj/MiroFish&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=666ghj/MiroFish&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=666ghj/MiroFish&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=666ghj/MiroFish&type=date&legend=top-left" />
- </picture>
-</a>
+Parallel World's simulation engine is powered by **[OASIS](https://github.com/camel-ai/oasis)**, and we sincerely thank the CAMEL-AI team for their open-source contribution!

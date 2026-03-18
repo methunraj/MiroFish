@@ -1,5 +1,5 @@
 """
-MiroFish Backend entry point
+Parallel World Backend entry point
 """
 
 import os

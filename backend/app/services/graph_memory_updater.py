@@ -17,7 +17,7 @@ from .entity_extractor import EntityExtractor
 
 from ..utils.logger import get_logger
 
-logger = get_logger('mirofish.graph_memory_updater')
+logger = get_logger('parallelworld.graph_memory_updater')
 
 
 @dataclass

@@ -1,27 +1,27 @@
 services:
   postgres:
     image: pgvector/pgvector:pg16
-    container_name: mirofish-postgres
+    container_name: parallelworld-postgres
     environment:
-      POSTGRES_DB: mirofish
-      POSTGRES_USER: mirofish
-      POSTGRES_PASSWORD: mirofish_secret
+      POSTGRES_DB: parallelworld
+      POSTGRES_USER: parallelworld
+      POSTGRES_PASSWORD: parallelworld_secret
     ports:
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U mirofish"]
+      test: ["CMD-SHELL", "pg_isready -U parallelworld"]
       interval: 5s
       timeout: 5s
       retries: 5
     restart: unless-stopped
 
-  mirofish:
-    image: ghcr.io/666ghj/mirofish:latest
-    # Accelerated mirror (replace the address above if pulling is slow)
-    # image: ghcr.nju.edu.cn/666ghj/mirofish:latest
-    container_name: mirofish
+  parallelworld:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: parallelworld
     env_file:
       - .env
     ports:

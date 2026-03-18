@@ -1,11 +1,11 @@
 [project]
-name = "mirofish-backend"
+name = "parallel-world-backend"
 version = "0.1.0"
-description = "MiroFish - A concise universal collective intelligence engine for predicting everything"
+description = "Parallel World - A concise universal collective intelligence engine for predicting everything"
 requires-python = ">=3.11"
 license = { text = "AGPL-3.0" }
 authors = [
-    { name = "MiroFish Team" }
+    { name = "Parallel World Team" }
 ]
 
 dependencies = [

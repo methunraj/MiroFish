@@ -18,7 +18,7 @@ from ..utils.logger import get_logger
 from ..utils.llm_client import LLMClient
 from .graph_store import GraphStore
 
-logger = get_logger('mirofish.graph_tools')
+logger = get_logger('parallelworld.graph_tools')
 
 
 @dataclass

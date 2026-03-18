@@ -1,7 +1,7 @@
 {
-  "name": "mirofish",
+  "name": "parallel-world",
   "version": "0.1.0",
-  "description": "MiroFish - A concise universal collective intelligence engine for predicting everything",
+  "description": "Parallel World - A concise universal collective intelligence engine for predicting everything",
   "scripts": {
     "setup": "npm install && cd frontend && npm install",
     "setup:backend": "cd backend && uv sync",

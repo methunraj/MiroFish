@@ -1,5 +1,5 @@
 """
-MiroFish Backend - Flask application factory
+Parallel World Backend - Flask application factory
 """
 
 import os
@@ -28,7 +28,7 @@ def create_app(config_class=Config):
         app.json.ensure_ascii = False
     
     # Setup logging
-    logger = setup_logger('mirofish')
+    logger = setup_logger('parallelworld')
 
     # Only print startup info in reloader subprocess (avoid printing twice in debug mode)
     is_reloader_process = os.environ.get('WERKZEUG_RUN_MAIN') == 'true'
@@ -37,7 +37,7 @@ def create_app(config_class=Config):
     
     if should_log_startup:
         logger.info("=" * 50)
-        logger.info("MiroFish Backend starting...")
+        logger.info("Parallel World Backend starting...")
         logger.info("=" * 50)
     
     # Enable CORS
@@ -63,14 +63,14 @@ def create_app(config_class=Config):
     # Request logging middleware
     @app.before_request
     def log_request():
-        logger = get_logger('mirofish.request')
+        logger = get_logger('parallelworld.request')
         logger.debug(f"Request: {request.method} {request.path}")
         if request.content_type and 'json' in request.content_type:
             logger.debug(f"Request body: {request.get_json(silent=True)}")
     
     @app.after_request
     def log_response(response):
-        logger = get_logger('mirofish.request')
+        logger = get_logger('parallelworld.request')
         logger.debug(f"Response: {response.status_code}")
         return response
     
@@ -87,12 +87,12 @@ def create_app(config_class=Config):
             from .models.graph_db import get_db_session
             with next(get_db_session()) as session:
                 session.execute(text("SELECT 1"))
-            return {'status': 'ok', 'service': 'MiroFish Backend', 'database': 'connected'}
+            return {'status': 'ok', 'service': 'Parallel World Backend', 'database': 'connected'}
         except Exception as e:
-            return {'status': 'error', 'service': 'MiroFish Backend', 'database': 'disconnected', 'error': str(e)}, 503
+            return {'status': 'error', 'service': 'Parallel World Backend', 'database': 'disconnected', 'error': str(e)}, 503
     
     if should_log_startup:
-        logger.info("MiroFish Backend started successfully")
+        logger.info("Parallel World Backend started successfully")
     
     return app
 

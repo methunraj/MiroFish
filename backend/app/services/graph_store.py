@@ -15,7 +15,7 @@ from ..models.graph_db import (
 )
 from ..utils.logger import get_logger
 
-logger = get_logger('mirofish.graph_store')
+logger = get_logger('parallelworld.graph_store')
 
 
 class GraphStore:
@@ -35,7 +35,7 @@ class GraphStore:
             graph = Graph(
                 graph_id=graph_id,
                 name=name,
-                description=description or "MiroFish Social Simulation Graph"
+                description=description or "Parallel World Social Simulation Graph"
             )
             session.add(graph)
             session.commit()

@@ -22,7 +22,7 @@ from ..config import Config
 from ..utils.logger import get_logger
 from .entity_reader import EntityNode, EntityReader
 
-logger = get_logger('mirofish.simulation_config')
+logger = get_logger('parallelworld.simulation_config')
 
 # Daily activity time configuration (Beijing Time)
 CHINA_TIMEZONE_CONFIG = {

@@ -10,7 +10,7 @@ from .entity_extractor import EntityExtractor
 from .graph_store import GraphStore
 from ..utils.logger import get_logger
 
-logger = get_logger('mirofish.extraction_worker')
+logger = get_logger('parallelworld.extraction_worker')
 
 
 class ExtractionWorker:

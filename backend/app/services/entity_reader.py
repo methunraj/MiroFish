@@ -11,7 +11,7 @@ from .graph_store import GraphStore
 
 from ..utils.logger import get_logger
 
-logger = get_logger('mirofish.entity_reader')
+logger = get_logger('parallelworld.entity_reader')
 
 # For generic return types
 T = TypeVar('T')

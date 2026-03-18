@@ -7,7 +7,7 @@ import os
 from dotenv import load_dotenv
 
 # Load the .env file from the project root
-# Path: MiroFish/.env (relative to backend/app/config.py)
+# Path: Parallel World/.env (relative to backend/app/config.py)
 project_root_env = os.path.join(os.path.dirname(__file__), '../../.env')
 
 if os.path.exists(project_root_env):
@@ -21,7 +21,7 @@ class Config:
     """Flask configuration class"""
 
     # Flask configuration
-    SECRET_KEY = os.environ.get('SECRET_KEY', 'mirofish-secret-key')
+    SECRET_KEY = os.environ.get('SECRET_KEY', 'parallelworld-secret-key')
     DEBUG = os.environ.get('FLASK_DEBUG', 'True').lower() == 'true'
     
     # JSON configuration - disable ASCII escaping to display Chinese characters directly (not \uXXXX format)
@@ -33,7 +33,7 @@ class Config:
     LLM_MODEL_NAME = os.environ.get('LLM_MODEL_NAME', 'gpt-4o-mini')
 
     # Database configuration
-    DATABASE_URL = os.environ.get('DATABASE_URL', 'postgresql://mirofish:mirofish_secret@localhost:5433/mirofish')
+    DATABASE_URL = os.environ.get('DATABASE_URL', 'postgresql://parallelworld:parallelworld_secret@localhost:5433/parallelworld')
 
     # File upload configuration
     MAX_CONTENT_LENGTH = 50 * 1024 * 1024  # 50MB

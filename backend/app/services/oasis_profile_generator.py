@@ -21,7 +21,7 @@ from ..config import Config
 from ..utils.logger import get_logger
 from .entity_reader import EntityNode, EntityReader
 
-logger = get_logger('mirofish.oasis_profile')
+logger = get_logger('parallelworld.oasis_profile')
 
 
 @dataclass
