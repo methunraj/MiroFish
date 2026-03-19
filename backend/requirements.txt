@@ -1,5 +1,5 @@
 # ===========================================
-# Parallel World Backend Dependencies
+# MiroFish Backend Dependencies
 # ===========================================
 # Python 3.11+ required
 # Install: pip install -r requirements.txt
@@ -9,27 +9,30 @@
 flask>=3.0.0
 flask-cors>=6.0.0
 
+# ============= Database =============
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0
+pgvector>=0.4.0
+
 # ============= LLM Related =============
-# OpenAI SDK (unified OpenAI format for calling LLMs)
 openai>=1.0.0
 
 # ============= Zep Cloud =============
 zep-cloud==3.13.0
 
 # ============= OASIS Social Media Simulation =============
-# OASIS social simulation framework
 camel-oasis==0.2.5
 camel-ai==0.2.78
 
 # ============= File Processing =============
 PyMuPDF>=1.24.0
-# Encoding detection (supports text files with non-UTF-8 encoding)
 charset-normalizer>=3.0.0
 chardet>=5.0.0
 
-# ============= Utility Libraries =============
-# Environment variable loading
-python-dotenv>=1.0.0
+# ============= HTTP / Web Tools =============
+requests>=2.31.0
+beautifulsoup4>=4.12.0
 
-# Data validation
+# ============= Utility Libraries =============
+python-dotenv>=1.0.0
 pydantic>=2.0.0
