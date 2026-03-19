@@ -3,3 +3,4 @@ export { graphApi } from "./graph";
 export { simulationApi } from "./simulation";
 export { reportApi } from "./report";
 export { workbenchApi } from "./workbench";
+export { socialApi } from "./social";

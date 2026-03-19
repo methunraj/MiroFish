@@ -3,6 +3,7 @@
 import { useRef, useEffect, useCallback, useState } from "react";
 import * as d3 from "d3";
 import { cn } from "@/lib/utils";
+import { graphApi } from "@/lib/api/graph";
 
 const NODE_COLORS: Record<string, string> = {
   default: "#9BBC0F",
@@ -32,7 +33,9 @@ export interface KGEdge {
 }
 
 export interface KnowledgeGraphProps {
-  data: { nodes: KGNode[]; edges: KGEdge[] } | null;
+  data?: { nodes: KGNode[]; edges: KGEdge[] } | null;
+  /** When set, loads nodes/edges from the graph API (overrides `data`). */
+  graphId?: string;
   onNodeClick?: (node: KGNode) => void;
   className?: string;
 }
@@ -56,10 +59,76 @@ function colorForType(type: string): string {
   return PALETTE[Math.abs(hash) % PALETTE.length];
 }
 
-export function KnowledgeGraph({ data, onNodeClick, className }: KnowledgeGraphProps) {
+export function KnowledgeGraph({
+  data: dataProp,
+  graphId,
+  onNodeClick,
+  className,
+}: KnowledgeGraphProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [tooltip, setTooltip] = useState<{ x: number; y: number; label: string } | null>(null);
+  const [fetched, setFetched] = useState<{ nodes: KGNode[]; edges: KGEdge[] } | null>(null);
+  const [loadingGraph, setLoadingGraph] = useState(false);
+
+  useEffect(() => {
+    if (!graphId) {
+      setFetched(null);
+      setLoadingGraph(false);
+      return;
+    }
+    let cancelled = false;
+    setLoadingGraph(true);
+    graphApi
+      .getGraphData(graphId)
+      .then((r) => {
+        if (cancelled) return;
+        const raw = r.data as {
+          nodes?: {
+            uuid?: string;
+            id?: string;
+            name?: string;
+            labels?: string[];
+            attributes?: Record<string, unknown>;
+          }[];
+          edges?: {
+            source_node_uuid?: string;
+            target_node_uuid?: string;
+            source?: string;
+            target?: string;
+            fact?: string;
+            name?: string;
+          }[];
+        };
+        const nodes = (raw?.nodes ?? []).map((n) => ({
+          id: String(n.uuid ?? n.id ?? ""),
+          label: String(n.name ?? n.uuid ?? n.id ?? ""),
+          type:
+            Array.isArray(n.labels) && n.labels[0]
+              ? String(n.labels[0])
+              : "default",
+          attributes: n.attributes,
+        }));
+        const edges = (raw?.edges ?? []).map((e) => ({
+          source: String(e.source_node_uuid ?? e.source ?? ""),
+          target: String(e.target_node_uuid ?? e.target ?? ""),
+          label: e.fact != null ? String(e.fact) : e.name != null ? String(e.name) : undefined,
+          weight: 1,
+        }));
+        setFetched({ nodes, edges });
+      })
+      .catch(() => {
+        if (!cancelled) setFetched(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingGraph(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [graphId]);
+
+  const data = graphId ? fetched : dataProp ?? null;
 
   const render = useCallback(() => {
     if (!svgRef.current || !containerRef.current || !data?.nodes?.length) return;
@@ -192,6 +261,16 @@ export function KnowledgeGraph({ data, onNodeClick, className }: KnowledgeGraphP
       observer.disconnect();
     };
   }, [render]);
+
+  if (graphId && loadingGraph) {
+    return (
+      <div className={cn("flex min-h-[300px] items-center justify-center border-2 border-border bg-card p-8", className)}>
+        <span className="text-[10px] font-[family-name:var(--font-pixel)] uppercase text-muted-foreground">
+          Loading graph…
+        </span>
+      </div>
+    );
+  }
 
   if (!data?.nodes?.length) {
     return (

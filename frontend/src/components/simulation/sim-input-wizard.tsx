@@ -14,9 +14,9 @@ import { StandaloneNav } from "@/components/layout/standalone-nav";
 export interface FieldConfig {
   name: string;
   label: string;
-  type: "text" | "textarea" | "number" | "select" | "multi-select" | "slider";
+  type: "text" | "textarea" | "number" | "select" | "multi-select" | "slider" | "sim-preset";
   placeholder?: string;
-  options?: { value: string; label: string }[];
+  options?: { value: string; label: string; desc?: string; icon?: string }[];
   min?: number;
   max?: number;
   step?: number;
@@ -190,6 +190,37 @@ export function SimInputWizard({
                           )}
                         >
                           {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {field.type === "sim-preset" && (
+                  <div className="grid grid-cols-2 gap-2">
+                    {field.options?.map((opt) => {
+                      const active = values[field.name] === opt.value;
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => set(field.name, opt.value)}
+                          className={cn(
+                            "p-3 border-2 text-left transition-all",
+                            active
+                              ? "border-[#9BBC0F] bg-[#9BBC0F]/10"
+                              : "border-border hover:border-[#9BBC0F]/50"
+                          )}
+                        >
+                          <div className="flex items-center gap-2 mb-1">
+                            {opt.icon && <span className="text-base">{opt.icon}</span>}
+                            <span className="font-[family-name:var(--font-pixel)] text-[10px] uppercase tracking-wider text-foreground">
+                              {opt.label}
+                            </span>
+                          </div>
+                          {opt.desc && (
+                            <p className="text-[9px] text-muted-foreground leading-tight">{opt.desc}</p>
+                          )}
                         </button>
                       );
                     })}

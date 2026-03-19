@@ -9,6 +9,7 @@ import { PixelInput, PixelTextarea } from "@/components/ui/pixel-input";
 import { PixelBadge } from "@/components/ui/pixel-badge";
 import { cn } from "@/lib/utils";
 import { simulationApi } from "@/lib/api/simulation";
+import api from "@/lib/api/client";
 import { fadeUp, staggerContainer, staggerItem } from "@/lib/motion/presets";
 import { StandaloneNav } from "@/components/layout/standalone-nav";
 
@@ -24,14 +25,24 @@ const BUDGET_RANGES = [
   { value: "growth", label: "$1M+" },
 ];
 
+const SIM_PRESETS = [
+  { value: "quick", label: "Quick", desc: "~15 agents, 4 rounds, 1hr sim", icon: "⚡" },
+  { value: "standard", label: "Standard", desc: "~50 agents, 12 rounds, 4hr sim", icon: "⚖️" },
+  { value: "deep", label: "Deep", desc: "~100 agents, 30 rounds, 12hr sim", icon: "🔬" },
+  { value: "auto", label: "Automatic", desc: "AI decides everything", icon: "🤖" },
+];
+
 export default function PromptSimPage() {
   const router = useRouter();
   const [idea, setIdea] = useState("");
   const [targetMarket, setTargetMarket] = useState("");
   const [industries, setIndustries] = useState<string[]>([]);
   const [budgetRange, setBudgetRange] = useState("");
+  const [simPreset, setSimPreset] = useState("standard");
   const [populationSize, setPopulationSize] = useState(50);
   const [submitting, setSubmitting] = useState(false);
+  const [autoLoading, setAutoLoading] = useState(false);
+  const [autoRationale, setAutoRationale] = useState("");
   const [error, setError] = useState("");
 
   const toggleIndustry = useCallback((tag: string) => {
@@ -39,6 +50,28 @@ export default function PromptSimPage() {
       prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
     );
   }, []);
+
+  const handlePresetChange = async (preset: string) => {
+    setSimPreset(preset);
+    setAutoRationale("");
+    if (preset === "quick") setPopulationSize(15);
+    else if (preset === "standard") setPopulationSize(50);
+    else if (preset === "deep") setPopulationSize(100);
+    else if (preset === "auto" && idea.trim()) {
+      setAutoLoading(true);
+      try {
+        const res = await api.post("/sim/auto-config", { topic: idea.trim(), mode: "prompt" });
+        const data = res.data;
+        if (data?.population_size) setPopulationSize(data.population_size);
+        if (data?.rationale) setAutoRationale(data.rationale);
+      } catch {
+        setAutoRationale("AI config unavailable — using Standard defaults");
+        setPopulationSize(50);
+      } finally {
+        setAutoLoading(false);
+      }
+    }
+  };
 
   const handleSubmit = async () => {
     if (!idea.trim()) return;
@@ -53,6 +86,10 @@ export default function PromptSimPage() {
           industries,
           budget_range: budgetRange,
           population_size: populationSize,
+          sim_preset: simPreset,
+          ...(simPreset === "quick" && { total_simulation_hours: 1, max_rounds: 4, minutes_per_round: 15 }),
+          ...(simPreset === "standard" && { total_simulation_hours: 4, max_rounds: 12, minutes_per_round: 20 }),
+          ...(simPreset === "deep" && { total_simulation_hours: 12, max_rounds: 30, minutes_per_round: 24 }),
         },
       });
       const simId = res.data?.id ?? res.data?.sim_id;
@@ -169,17 +206,57 @@ export default function PromptSimPage() {
               </div>
             </motion.div>
 
+            {/* Simulation Mode Preset */}
+            <motion.div variants={staggerItem}>
+              <label className="block mb-1.5 font-[family-name:var(--font-pixel)] text-[10px] uppercase tracking-wider text-muted-foreground">
+                Simulation Mode
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {SIM_PRESETS.map((p) => (
+                  <button
+                    key={p.value}
+                    type="button"
+                    onClick={() => handlePresetChange(p.value)}
+                    className={cn(
+                      "p-3 border-2 text-left transition-all",
+                      simPreset === p.value
+                        ? "border-[#9BBC0F] bg-[#9BBC0F]/10"
+                        : "border-border hover:border-[#9BBC0F]/50"
+                    )}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-base">{p.icon}</span>
+                      <span className="font-[family-name:var(--font-pixel)] text-[10px] uppercase tracking-wider text-foreground">
+                        {p.label}
+                      </span>
+                    </div>
+                    <p className="text-[9px] text-muted-foreground leading-tight">{p.desc}</p>
+                  </button>
+                ))}
+              </div>
+              {autoLoading && (
+                <p className="mt-2 text-[9px] font-[family-name:var(--font-pixel)] text-[#9BBC0F] animate-pulse uppercase">
+                  AI is analyzing your topic...
+                </p>
+              )}
+              {autoRationale && !autoLoading && (
+                <p className="mt-2 text-[9px] text-muted-foreground leading-tight border-l-2 border-[#9BBC0F]/50 pl-2">
+                  {autoRationale}
+                </p>
+              )}
+            </motion.div>
+
             {/* Population Size */}
             <motion.div variants={staggerItem}>
               <label className="block mb-1.5 font-[family-name:var(--font-pixel)] text-[10px] uppercase tracking-wider text-muted-foreground">
-                Population Size
+                Population Size {simPreset === "auto" && "(AI-suggested)"}
               </label>
               <div className="flex items-center gap-3">
                 <input
                   type="range"
                   min={10}
                   max={200}
-                  step={10}
+                  step={5}
                   value={populationSize}
                   onChange={(e) => setPopulationSize(Number(e.target.value))}
                   className="flex-1 accent-[#9BBC0F]"

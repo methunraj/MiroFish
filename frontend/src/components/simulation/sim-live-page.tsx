@@ -1,11 +1,13 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { StandaloneNav } from "@/components/layout/standalone-nav";
 import { PixelCard } from "@/components/ui/pixel-card";
 import { PixelButton } from "@/components/ui/pixel-button";
+import { PixelBadge } from "@/components/ui/pixel-badge";
 import { PixelProgress } from "@/components/ui/pixel-progress";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { NumberCounter } from "@/components/shared/number-counter";
@@ -14,8 +16,20 @@ import { VizSelector, type VizOption } from "@/components/viz/viz-selector";
 import { ReactionGrid } from "@/components/viz/reaction-grid";
 import { DemographicNetwork } from "@/components/viz/demographic-network";
 import { HeatmapGrid } from "@/components/viz/heatmap-grid";
+import { TwitterFeed } from "@/components/viz/twitter-feed";
+import { PublicOpinionChart } from "@/components/viz/public-opinion-chart";
+import { FactionMap } from "@/components/viz/faction-map";
+import { LiveActivityFeed } from "@/components/viz/live-activity-feed";
+import { AgentSpotlight } from "@/components/viz/agent-spotlight";
+import { CardStream } from "@/components/viz/card-stream";
+import { SankeyFlow } from "@/components/viz/sankey-flow";
+import { MultiLaneTimeline } from "@/components/viz/multi-lane-timeline";
+import { useSimStream } from "@/lib/hooks/use-sim-stream";
+import { socialApi } from "@/lib/api/social";
 import { usePolling } from "@/lib/hooks/use-polling";
 import { simulationApi } from "@/lib/api/simulation";
+import { useAppStore } from "@/lib/store/app-store";
+import { FloatingChat } from "@/components/layout/floating-chat";
 import api from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 import { staggerContainer, staggerItem, fadeUp } from "@/lib/motion/presets";
@@ -33,6 +47,11 @@ interface SimStatus {
   status: string;
   round?: number;
   total_rounds?: number;
+  current_round?: number;
+  simulated_hour?: number;
+  total_hours?: number;
+  sim_phase?: string;
+  social_counts?: { posts: number; threads: number; debates: number };
   progress?: number;
   stats?: Record<string, number>;
   stale?: boolean;
@@ -48,11 +67,49 @@ export function SimLivePage({
   statsConfig,
 }: SimLivePageProps) {
   const router = useRouter();
+  const setActiveSimId = useAppStore((s) => s.setActiveSimId);
+
+  useEffect(() => {
+    setActiveSimId(simId);
+    return () => setActiveSimId(null);
+  }, [simId, setActiveSimId]);
+
   const [activeViz, setActiveViz] = useState(vizOptions[0]?.id ?? "");
   const [vizData, setVizData] = useState<unknown>(null);
   const [vizLoading, setVizLoading] = useState(false);
   const [actions, setActions] = useState<SimStatus["actions"]>([]);
   const actionCountRef = useRef(0);
+  const [spotlightAgent, setSpotlightAgent] = useState<string | null>(null);
+  const [socialPosts, setSocialPosts] = useState<any[]>([]);
+  const [opinionData, setOpinionData] = useState<any>(null);
+  const [factionAgents, setFactionAgents] = useState<any[]>([]);
+  const [population, setPopulation] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!simId) return;
+    let retries = 0;
+    let timer: ReturnType<typeof setTimeout>;
+    const fetchPop = () => {
+      simulationApi.getPopulation(simId)
+        .then((r) => {
+          const pop = r.data?.population || [];
+          if (pop.length > 0) {
+            setPopulation(pop);
+          } else if (retries < 8) {
+            retries++;
+            timer = setTimeout(fetchPop, 3000 + retries * 2000);
+          }
+        })
+        .catch(() => {
+          if (retries < 8) {
+            retries++;
+            timer = setTimeout(fetchPop, 3000 + retries * 2000);
+          }
+        });
+    };
+    fetchPop();
+    return () => clearTimeout(timer);
+  }, [simId]);
 
   useEffect(() => {
     if (!activeViz) return;
@@ -100,7 +157,7 @@ export function SimLivePage({
 
   const { data: status, loading } = usePolling<SimStatus>({
     fetcher,
-    interval: 2000,
+    interval: 3000,
     enabled: true,
     onData: (d) => {
       if (d.actions && d.actions.length > actionCountRef.current) {
@@ -112,23 +169,55 @@ export function SimLivePage({
 
   const isTerminal = status?.status === "completed" || status?.status === "failed" || status?.status === "stopped";
 
+  const { events: streamEvents } = useSimStream(simId, !isTerminal);
+
+  useEffect(() => {
+    if (!simId) return;
+    const loadSocial = async () => {
+      try {
+        const [postsRes, opinionRes, statesRes] = await Promise.allSettled([
+          socialApi.getPosts(simId),
+          socialApi.getOpinion(simId),
+          socialApi.getAgentStates(simId),
+        ]);
+        if (postsRes.status === "fulfilled") setSocialPosts(postsRes.value.data || []);
+        if (opinionRes.status === "fulfilled") setOpinionData(opinionRes.value.data || null);
+        if (statesRes.status === "fulfilled") setFactionAgents((statesRes.value.data || []).map((a: any) => ({
+          id: a.id, name: a.name, sentiment: a.sentiment || 5, faction: a.faction || "", influence: a.influence || 0.5,
+        })));
+      } catch (err) {
+        console.error("[SimLive] Social data load failed:", err);
+      }
+    };
+    loadSocial();
+    const timer = setInterval(loadSocial, 8000);
+    return () => clearInterval(timer);
+  }, [simId]);
+
   const handleStop = async () => {
     try {
       await simulationApi.stop(simId);
-    } catch { /* ignore */ }
+    } catch (err) {
+      console.error("[SimLive] Stop failed:", err);
+    }
   };
 
   const handleReport = async () => {
     try {
       await simulationApi.generateReport(simId);
       router.push(`/${mode}-sim/${simId}/report`);
-    } catch { /* ignore */ }
+    } catch (err) {
+      console.error("[SimLive] Report generation failed:", err);
+      router.push(`/${mode}-sim/${simId}/report`);
+    }
   };
 
   const handleForceComplete = async () => {
     try {
       await api.post(`/sim/${simId}/force-complete`);
-    } catch { /* ignore */ }
+    } catch (err) {
+      console.error("[SimLive] Force complete failed:", err);
+    }
   };
 
   if (!status && loading) {
@@ -171,6 +260,44 @@ export function SimLivePage({
             label="Simulation Progress"
             segments={24}
           />
+        )}
+
+        {/* Round Indicator */}
+        {(status?.current_round ?? 0) > 0 && (
+          <PixelCard className="p-3 flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-2">
+              <span className="font-[family-name:var(--font-pixel)] text-[9px] uppercase text-muted-foreground">Round</span>
+              <span className="font-[family-name:var(--font-pixel)] text-[11px] text-primary">
+                {status?.current_round}/{status?.total_rounds || "?"}
+              </span>
+            </div>
+            {(status?.simulated_hour ?? 0) > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="font-[family-name:var(--font-pixel)] text-[9px] uppercase text-muted-foreground">Hour</span>
+                <span className="font-[family-name:var(--font-pixel)] text-[11px] text-foreground">
+                  {status?.simulated_hour}h / {status?.total_hours || "?"}h
+                </span>
+              </div>
+            )}
+            {status?.sim_phase && (
+              <PixelBadge variant="green" className="text-[8px]">
+                {status.sim_phase.replace(/_/g, " ").toUpperCase()}
+              </PixelBadge>
+            )}
+            {status?.social_counts && (
+              <div className="flex items-center gap-3 ml-auto">
+                <span className="text-[9px] text-muted-foreground">
+                  {status.social_counts.posts} posts
+                </span>
+                <span className="text-[9px] text-muted-foreground">
+                  {status.social_counts.threads} threads
+                </span>
+                <span className="text-[9px] text-muted-foreground">
+                  {status.social_counts.debates} debates
+                </span>
+              </div>
+            )}
+          </PixelCard>
         )}
 
         {/* Stats Row */}
@@ -239,6 +366,29 @@ export function SimLivePage({
                   />
                 );
               }
+              if (vizId === "social" || vizId === "twitter") {
+                return <TwitterFeed posts={socialPosts} onAgentClick={setSpotlightAgent} className="p-2" />;
+              }
+              if (vizId === "opinion") {
+                return opinionData ? (
+                  <PublicOpinionChart agents={opinionData.agents || []} factions={opinionData.factions} avgSentiment={opinionData.avg_sentiment} shifts={opinionData.shifts} />
+                ) : null;
+              }
+              if (vizId === "factions" || vizId === "faction_map") {
+                return <FactionMap agents={factionAgents} onAgentClick={setSpotlightAgent} />;
+              }
+              if (vizId === "live_feed" || vizId === "activity") {
+                return <LiveActivityFeed events={streamEvents} onAgentClick={setSpotlightAgent} className="h-[400px]" />;
+              }
+              if (vizId === "sankey" || vizId === "flow") {
+                return <SankeyFlow data={vizData as any} className="h-[400px]" />;
+              }
+              if (vizId === "timeline" || vizId === "multi_timeline") {
+                return <MultiLaneTimeline data={vizData as any} className="h-[400px]" />;
+              }
+              if (vizId === "card_stream") {
+                return <CardStream data={vizData as any} className="h-[400px]" />;
+              }
               return (
                 <div className="flex items-center justify-center h-[400px]">
                   <span className="font-[family-name:var(--font-pixel)] text-[10px] text-muted-foreground uppercase tracking-wider">
@@ -306,6 +456,11 @@ export function SimLivePage({
             </PixelButton>
           )}
           <div className="flex-1" />
+          <Link href={`/sim-theater/${simId}`}>
+            <PixelButton variant="outline" size="sm">
+              SIMULATION THEATER
+            </PixelButton>
+          </Link>
           <PixelButton
             size="sm"
             disabled={!isTerminal}
@@ -315,6 +470,9 @@ export function SimLivePage({
           </PixelButton>
         </PixelCard>
       </div>
+
+      <AgentSpotlight simId={simId} agentId={spotlightAgent} onClose={() => setSpotlightAgent(null)} />
+      <FloatingChat />
     </div>
   );
 }

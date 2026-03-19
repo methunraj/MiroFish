@@ -10,6 +10,8 @@ const NAV_LINKS = [
   { icon: "◎", label: "MARKET", href: "/prompt-sim" },
   { icon: "▣", label: "PRODUCT", href: "/product-sim" },
   { icon: "♦", label: "ECONOMY", href: "/economy-sim" },
+  { icon: "⚙", label: "WORKBENCH", href: "/workbench" },
+  { icon: "◷", label: "HISTORY", href: "/history" },
 ];
 
 export function StandaloneNav() {

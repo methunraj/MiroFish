@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { TopBar } from "@/components/layout/top-bar";
@@ -11,6 +11,14 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { NumberCounter } from "@/components/shared/number-counter";
 import { LoadingState } from "@/components/shared/loading-state";
 import { VizSelector, type VizOption } from "@/components/viz/viz-selector";
+import { AgentNetworkGraph } from "@/components/viz/agent-network-graph";
+import type { AgentEdge, AgentNode } from "@/components/viz/agent-network-graph";
+import { MultiLaneTimeline } from "@/components/viz/multi-lane-timeline";
+import type { MultiLaneTimelineProps } from "@/components/viz/multi-lane-timeline";
+import { HeatmapGrid } from "@/components/viz/heatmap-grid";
+import type { HeatmapGridProps } from "@/components/viz/heatmap-grid";
+import { SankeyFlow } from "@/components/viz/sankey-flow";
+import type { SankeyFlowProps } from "@/components/viz/sankey-flow";
 import { usePolling } from "@/lib/hooks/use-polling";
 import { simulationApi } from "@/lib/api/simulation";
 import { cn } from "@/lib/utils";
@@ -22,6 +30,14 @@ const VIZ_OPTIONS: VizOption[] = [
   { id: "heatmap", label: "Heatmap" },
   { id: "sankey", label: "Sankey Flow" },
 ];
+
+/** Maps UI viz id → unified `/sim/:id/viz-data` type (see document_engine.get_viz_data). */
+const VIZ_API_TYPE: Record<string, string> = {
+  "agent-network": "network",
+  timeline: "timeline",
+  heatmap: "heatmap",
+  sankey: "sankey",
+};
 
 interface RunStatus {
   status: string;
@@ -46,8 +62,102 @@ export default function SimulationRunPage() {
   const simId = params.simId as string;
 
   const [activeViz, setActiveViz] = useState(VIZ_OPTIONS[0].id);
+  const [vizData, setVizData] = useState<unknown>(null);
+  const [vizLoading, setVizLoading] = useState(false);
   const [actions, setActions] = useState<RunStatus["actions"]>([]);
   const actionCountRef = useRef(0);
+  const vizFetchGen = useRef(0);
+
+  useEffect(() => {
+    if (!simId) return;
+    const apiType = VIZ_API_TYPE[activeViz] ?? activeViz;
+    const vizKey = activeViz;
+    const gen = ++vizFetchGen.current;
+    setVizLoading(true);
+    setVizData(null);
+    simulationApi
+      .getVizData(simId, apiType)
+      .then((r) => {
+        if (gen !== vizFetchGen.current) return;
+        const raw = r.data as Record<string, unknown>;
+        if (raw?.error) {
+          setVizData(null);
+          return;
+        }
+
+        if (vizKey === "agent-network" && raw?.nodes) {
+          const nodes = (raw.nodes as Record<string, unknown>[]).map((n) => ({
+            id: String(n.id),
+            name: String(n.name ?? n.id),
+            activity:
+              ((n.interest as number) ?? (n.activity as number) ?? 5) / 10,
+            group: (n.income_level ?? n.group ?? n.occupation ?? "default") as
+              | string
+              | number,
+          }));
+          const edges = (
+            (raw.edges as Record<string, unknown>[]) ?? []
+          ).map((e) => ({
+            source: String(e.source),
+            target: String(e.target),
+            weight:
+              ((e.shared as string[])?.length ?? (e.weight as number) ?? 1) *
+              0.5,
+            type:
+              ((e.shared as string[]) ?? [])[0] != null
+                ? String((e.shared as string[])[0])
+                : String(e.type ?? "link"),
+          }));
+          setVizData({ nodes, edges });
+          return;
+        }
+
+        if (vizKey === "timeline" && Array.isArray(raw?.events)) {
+          const evs = raw.events as {
+            round?: number;
+            actions?: number;
+            lane?: string;
+            start?: number;
+            end?: number;
+            label?: string;
+            type?: string;
+          }[];
+          if (evs.length && typeof evs[0]?.round === "number") {
+            setVizData({
+              lanes: [{ id: "activity", label: "Actions / round" }],
+              events: evs.map((e) => ({
+                lane: "activity",
+                start: e.round!,
+                end: e.round! + 0.85,
+                label: `${e.actions ?? 0} actions`,
+                type: "action",
+              })),
+            });
+            return;
+          }
+          setVizData(raw);
+          return;
+        }
+
+        if (vizKey === "heatmap") {
+          setVizData(raw);
+          return;
+        }
+
+        if (vizKey === "sankey") {
+          setVizData(raw);
+          return;
+        }
+
+        setVizData(null);
+      })
+      .catch(() => {
+        if (gen === vizFetchGen.current) setVizData(null);
+      })
+      .finally(() => {
+        if (gen === vizFetchGen.current) setVizLoading(false);
+      });
+  }, [simId, activeViz]);
 
   const fetcher = useCallback(
     () =>
@@ -159,12 +269,44 @@ export default function SimulationRunPage() {
             active={activeViz}
             onChange={setActiveViz}
           />
-          <PixelCard className="min-h-[320px] flex items-center justify-center">
-            <span className="font-[family-name:var(--font-pixel)] text-[10px] text-muted-foreground uppercase">
-              [{" "}
-              {VIZ_OPTIONS.find((v) => v.id === activeViz)?.label ?? "VIZ"} —
-              PLACEHOLDER ]
-            </span>
+          <PixelCard className="min-h-[320px] p-2 flex flex-col">
+            {vizLoading ? (
+              <div className="flex flex-1 min-h-[280px] items-center justify-center">
+                <span className="font-[family-name:var(--font-pixel)] text-[10px] text-muted-foreground uppercase">
+                  Loading visualization…
+                </span>
+              </div>
+            ) : (
+              <>
+                {activeViz === "agent-network" && (
+                  <AgentNetworkGraph
+                    data={
+                      vizData as { nodes: AgentNode[]; edges: AgentEdge[] } | null
+                    }
+                    isLive
+                    className="min-h-[280px] flex-1"
+                  />
+                )}
+                {activeViz === "timeline" && (
+                  <MultiLaneTimeline
+                    data={vizData as MultiLaneTimelineProps["data"]}
+                    className="min-h-[280px] flex-1"
+                  />
+                )}
+                {activeViz === "heatmap" && (
+                  <HeatmapGrid
+                    data={vizData as HeatmapGridProps["data"]}
+                    className="min-h-[280px] flex-1"
+                  />
+                )}
+                {activeViz === "sankey" && (
+                  <SankeyFlow
+                    data={vizData as SankeyFlowProps["data"]}
+                    className="min-h-[280px] flex-1"
+                  />
+                )}
+              </>
+            )}
           </PixelCard>
         </div>
 

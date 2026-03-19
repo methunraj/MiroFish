@@ -77,7 +77,7 @@ export default function ReportPage() {
 
   const fetchReport = useCallback(async () => {
     try {
-      const res = await api.get(`/reports/${reportId}`);
+      const res = await api.get(`/report/${reportId}`);
       setReport(res.data ?? null);
     } catch (err) {
       console.error("Failed to fetch report:", err);
@@ -121,7 +121,7 @@ export default function ReportPage() {
   };
 
   const handleChat = async (message: string, history: { role: string; content: string }[]) => {
-    const res = await api.post(`/reports/${reportId}/chat`, { message, history });
+    const res = await api.post(`/report/${reportId}/chat`, { message, history });
     return res.data?.reply ?? "No response";
   };
 

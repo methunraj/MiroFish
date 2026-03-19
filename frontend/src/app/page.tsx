@@ -4,6 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { PixelCard } from "@/components/ui/pixel-card";
+import { PixelButton } from "@/components/ui/pixel-button";
+import { PixelBadge } from "@/components/ui/pixel-badge";
+import { StatusBadge } from "@/components/shared/status-badge";
+import api from "@/lib/api/client";
 import { staggerContainer, staggerItem } from "@/lib/motion/presets";
 
 const SIM_MODES = [
@@ -165,6 +169,16 @@ function TypewriterText({ text, className }: { text: string; className?: string 
 
 export default function HomePage() {
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+  const [recentSims, setRecentSims] = useState<any[]>([]);
+
+  useEffect(() => {
+    api.get("/sim/list?limit=5")
+      .then((res) => {
+        const sims = res.data || [];
+        setRecentSims(Array.isArray(sims) ? sims : []);
+      })
+      .catch(() => {});
+  }, []);
 
   return (
     <div className="relative min-h-screen flex flex-col">
@@ -292,6 +306,53 @@ export default function HomePage() {
           ))}
         </motion.div>
 
+        {/* Recent Simulations + History */}
+        {recentSims.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 1.0, duration: 0.5 }}
+            className="mt-8 max-w-3xl w-full px-2"
+          >
+            <div className="flex items-center justify-between mb-3">
+              <span className="font-[family-name:var(--font-pixel)] text-[9px] text-muted-foreground/60 uppercase tracking-wider">
+                Recent Simulations
+              </span>
+              <Link href="/history">
+                <PixelButton variant="ghost" size="sm" className="text-[8px]">
+                  VIEW ALL →
+                </PixelButton>
+              </Link>
+            </div>
+            <div className="space-y-2">
+              {recentSims.slice(0, 3).map((sim: any) => {
+                const modeRoutes: Record<string, string> = {
+                  prompt: "/prompt-sim",
+                  product_launch: "/product-sim",
+                  economy: "/economy-sim",
+                };
+                const href = `${modeRoutes[sim.mode] || "/"}/${sim.id}`;
+                return (
+                  <Link key={sim.id} href={href}>
+                    <PixelCard className="p-3 flex items-center gap-3 hover:border-primary/50 transition-colors cursor-pointer">
+                      <PixelBadge variant="muted" className="text-[7px] min-w-[60px] text-center">
+                        {(sim.mode || "?").toUpperCase()}
+                      </PixelBadge>
+                      <span className="flex-1 text-xs text-foreground truncate font-[family-name:var(--font-pixel-body)]">
+                        {sim.name || sim.id}
+                      </span>
+                      <StatusBadge status={sim.status || "pending"} />
+                      <span className="text-[8px] text-muted-foreground/50 font-[family-name:var(--font-pixel)]">
+                        {sim.population_count || 0} agents
+                      </span>
+                    </PixelCard>
+                  </Link>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+
         {/* Bottom status bar */}
         <motion.div
           initial={{ opacity: 0 }}
@@ -301,7 +362,7 @@ export default function HomePage() {
         >
           <span>READY FOR INPUT</span>
           <span>·</span>
-          <span>SELECT A SIMULATION MODE TO BEGIN</span>
+          <span>{recentSims.length > 0 ? `${recentSims.length} RECENT SIMS` : "SELECT A SIMULATION MODE TO BEGIN"}</span>
         </motion.div>
       </div>
     </div>

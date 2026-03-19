@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { label: "MARKET SIM", href: "/prompt-sim" },
   { label: "PRODUCT SIM", href: "/product-sim" },
   { label: "ECONOMY SIM", href: "/economy-sim" },
+  { icon: "◷", label: "HISTORY", href: "/history" },
 ];
 
 export function MobileDrawer() {
@@ -50,7 +51,14 @@ export function MobileDrawer() {
                       : "text-sidebar-foreground hover:bg-sidebar-accent"
                   )}
                 >
-                  {item.label}
+                  {"icon" in item && item.icon ? (
+                    <>
+                      <span className="mr-2 opacity-80">{item.icon}</span>
+                      {item.label}
+                    </>
+                  ) : (
+                    item.label
+                  )}
                 </Link>
               );
             })}

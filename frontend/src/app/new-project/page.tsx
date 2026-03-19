@@ -52,9 +52,10 @@ export default function NewProjectPage() {
     setError("");
     try {
       const form = new FormData();
-      form.append("file", file);
+      form.append("files", file);
       form.append("project_name", projectName.trim());
-      if (requirements.trim()) form.append("requirements", requirements.trim());
+      if (requirements.trim())
+        form.append("simulation_requirement", requirements.trim());
       const res = await graphApi.generateOntology(form);
       const projectId = res.data?.project_id ?? res.data?.id ?? res.data;
       router.push(`/process/${projectId}`);

@@ -30,6 +30,10 @@ class Simulation:
     actions_count: int = 0
     report_id: Optional[str] = None
     error: Optional[str] = None
+    progress: int = 0
+    current_round: int = 0
+    total_rounds: int = 0
+    phase: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -44,6 +48,10 @@ class Simulation:
             "actions_count": self.actions_count,
             "report_id": self.report_id,
             "error": self.error,
+            "progress": self.progress,
+            "current_round": self.current_round,
+            "total_rounds": self.total_rounds,
+            "phase": self.phase,
         }
 
     @classmethod
@@ -64,6 +72,10 @@ class Simulation:
             actions_count=data.get("actions_count", 0),
             report_id=data.get("report_id"),
             error=data.get("error"),
+            progress=data.get("progress", 0),
+            current_round=data.get("current_round", 0),
+            total_rounds=data.get("total_rounds", 0),
+            phase=data.get("phase", ""),
         )
 
 
@@ -133,6 +145,10 @@ class SimulationStore:
         population_count: Optional[int] = None,
         actions_count: Optional[int] = None,
         report_id: Optional[str] = None,
+        progress: Optional[int] = None,
+        current_round: Optional[int] = None,
+        total_rounds: Optional[int] = None,
+        phase: Optional[str] = None,
     ) -> Optional[Simulation]:
         sim = cls.get(sim_id)
         if sim is None:
@@ -147,6 +163,14 @@ class SimulationStore:
             sim.actions_count = actions_count
         if report_id is not None:
             sim.report_id = report_id
+        if progress is not None:
+            sim.progress = progress
+        if current_round is not None:
+            sim.current_round = current_round
+        if total_rounds is not None:
+            sim.total_rounds = total_rounds
+        if phase is not None:
+            sim.phase = phase
 
         cls._save(sim)
         return sim

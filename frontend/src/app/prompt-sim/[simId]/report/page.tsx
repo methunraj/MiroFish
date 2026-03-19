@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { StandaloneNav } from "@/components/layout/standalone-nav";
@@ -12,6 +12,10 @@ import { LoadingState } from "@/components/shared/loading-state";
 import { usePolling } from "@/lib/hooks/use-polling";
 import { simulationApi } from "@/lib/api/simulation";
 import { fadeUp, staggerContainer, staggerItem } from "@/lib/motion/presets";
+import { socialApi } from "@/lib/api/social";
+import { PublicOpinionChart } from "@/components/viz/public-opinion-chart";
+import { AgentDebateView } from "@/components/viz/agent-debate";
+import { FactionMap } from "@/components/viz/faction-map";
 
 interface ViabilityReport {
   status: string;
@@ -20,6 +24,7 @@ interface ViabilityReport {
   avg_interest?: number;
   total_respondents?: number;
   summary?: string;
+  executive_summary?: string;
   reaction_distribution?: Record<string, number>;
   demographic_breakdown?: Record<string, { count: number; avg_interest: number }>;
   concern_clusters?: { concern: string; frequency: number }[];
@@ -32,6 +37,17 @@ export default function PromptSimReportPage() {
   const params = useParams();
   const simId = params.simId as string;
   const [downloading, setDownloading] = useState(false);
+  const [interviews, setInterviews] = useState<any[]>([]);
+  const [socialData, setSocialData] = useState<{ opinion: any; debates: any[]; agents: any[] }>({
+    opinion: null, debates: [], agents: [],
+  });
+
+  useEffect(() => {
+    if (!simId) return;
+    simulationApi.getInterviews(simId)
+      .then((r) => setInterviews(r.data || []))
+      .catch(() => {});
+  }, [simId]);
 
   const fetcher = useCallback(
     () =>
@@ -88,6 +104,21 @@ export default function PromptSimReportPage() {
 
     return s;
   }, [report]);
+
+  useEffect(() => {
+    if (!simId) return;
+    Promise.allSettled([
+      socialApi.getOpinion(simId),
+      socialApi.getDebates(simId),
+      socialApi.getAgentStates(simId),
+    ]).then(([opRes, debRes, statesRes]) => {
+      setSocialData({
+        opinion: opRes.status === "fulfilled" ? opRes.value.data : null,
+        debates: debRes.status === "fulfilled" ? (debRes.value.data || []) : [],
+        agents: statesRes.status === "fulfilled" ? (statesRes.value.data || []) : [],
+      });
+    });
+  }, [simId]);
 
   const handleDownload = () => {
     if (!report) return;
@@ -150,14 +181,14 @@ export default function PromptSimReportPage() {
           )}
         </motion.div>
 
-        {/* Summary */}
-        {report?.summary && (
+        {/* Executive Summary */}
+        {(report?.executive_summary || report?.summary) && (
           <PixelCard className="p-5">
             <h2 className="font-[family-name:var(--font-pixel)] text-[10px] uppercase tracking-wider text-muted-foreground mb-2">
               Executive Summary
             </h2>
-            <p className="text-sm text-foreground leading-relaxed">
-              {report.summary}
+            <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
+              {report.executive_summary || report.summary}
             </p>
           </PixelCard>
         )}
@@ -178,6 +209,83 @@ export default function PromptSimReportPage() {
                   </h3>
                   <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
                     {section.content}
+                  </p>
+                </PixelCard>
+              </motion.div>
+            ))}
+          </motion.div>
+        )}
+
+        {/* Social Analysis */}
+        {socialData.opinion && socialData.opinion.agents?.length > 0 && (
+          <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="space-y-4">
+            <motion.div variants={staggerItem}>
+              <PixelCard className="p-5">
+                <h3 className="font-[family-name:var(--font-pixel)] text-[10px] uppercase tracking-wider text-[#9BBC0F] mb-3">
+                  Social Simulation Analysis
+                </h3>
+                <PublicOpinionChart
+                  agents={socialData.opinion.agents}
+                  factions={socialData.opinion.factions}
+                  avgSentiment={socialData.opinion.avg_sentiment}
+                  shifts={socialData.opinion.shifts}
+                />
+              </PixelCard>
+            </motion.div>
+
+            {socialData.debates.length > 0 && (
+              <motion.div variants={staggerItem}>
+                <PixelCard className="p-5">
+                  <h3 className="font-[family-name:var(--font-pixel)] text-[10px] uppercase tracking-wider text-[#F8B800] mb-3">
+                    Key Debates
+                  </h3>
+                  <AgentDebateView debates={socialData.debates.slice(0, 3)} />
+                </PixelCard>
+              </motion.div>
+            )}
+
+            {socialData.agents.length > 0 && (
+              <motion.div variants={staggerItem}>
+                <PixelCard className="p-5">
+                  <h3 className="font-[family-name:var(--font-pixel)] text-[10px] uppercase tracking-wider text-[#E05038] mb-3">
+                    Faction Analysis
+                  </h3>
+                  <FactionMap
+                    agents={socialData.agents.map((a: any) => ({
+                      id: a.id,
+                      name: a.name,
+                      sentiment: a.sentiment || 5,
+                      faction: a.faction || "",
+                      influence: a.influence || 0.5,
+                    }))}
+                  />
+                </PixelCard>
+              </motion.div>
+            )}
+          </motion.div>
+        )}
+
+        {/* Agent Interviews */}
+        {interviews.length > 0 && (
+          <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="space-y-3">
+            <h2 className="font-[family-name:var(--font-pixel)] text-[10px] uppercase tracking-wider text-[#5B8CF0]">
+              Agent Interviews ({interviews.length})
+            </h2>
+            {interviews.map((iv: any, idx: number) => (
+              <motion.div key={idx} variants={staggerItem}>
+                <PixelCard className="p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="font-[family-name:var(--font-pixel)] text-[9px] text-primary">
+                      {iv.agent_name}
+                    </span>
+                    {iv.occupation && (
+                      <PixelBadge variant="muted" className="text-[7px]">
+                        {iv.occupation}
+                      </PixelBadge>
+                    )}
+                  </div>
+                  <p className="text-sm text-foreground leading-relaxed font-[family-name:var(--font-pixel-body)]">
+                    &ldquo;{iv.response}&rdquo;
                   </p>
                 </PixelCard>
               </motion.div>

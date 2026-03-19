@@ -116,6 +116,21 @@ class DocumentSimEngine(SimulationEngine):
                     parallel_profile_count=config.get("parallel_profile_count", 5),
                 )
                 profiles = self._manager.get_profiles(legacy_state.simulation_id, platform="reddit")
+                data_dir = SimulationStore.get_data_dir(sim_id)
+                pop_for_json = []
+                for i, p in enumerate(profiles):
+                    pop_for_json.append({
+                        "id": str(p.get("agent_id", i)),
+                        "name": p.get("user_name", p.get("name", f"Agent_{i}")),
+                        "role": p.get("role", ""),
+                        "occupation": p.get("occupation", p.get("role", "")),
+                        "bio": p.get("bio", ""),
+                        "age": p.get("age"),
+                        "gender": p.get("gender"),
+                    })
+                pop_path = os.path.join(data_dir, "population.json")
+                with open(pop_path, "w", encoding="utf-8") as f:
+                    json.dump(pop_for_json, f, ensure_ascii=False, indent=2)
                 SimulationStore.update_status(
                     sim_id,
                     SimStatus.PENDING,
@@ -205,7 +220,32 @@ class DocumentSimEngine(SimulationEngine):
     # ------------------------------------------------------------------
 
     def get_viz_data(self, sim_id: str, viz_type: str) -> dict:
-        raise NotImplementedError("Visualization data is not yet connected for document engine")
+        """Return basic viz data from the legacy simulation."""
+        legacy_sim_id = self._legacy_id(sim_id)
+        if not legacy_sim_id:
+            return {"error": "No legacy simulation found"}
+
+        actions = self.get_actions(sim_id)
+        if viz_type in ("network", "demographic_network"):
+            population = self._load_population(sim_id, SimulationStore.get(sim_id).config if SimulationStore.get(sim_id) else {})
+            nodes = [{"id": p.id, "name": p.name, "activity": 0.5, "group": p.role or "agent"} for p in population]
+            edges = []
+            for i, a in enumerate(population):
+                for b in population[i+1:]:
+                    if a.role and a.role == b.role:
+                        edges.append({"source": a.id, "target": b.id, "weight": 0.5, "type": "same_role"})
+            return {"nodes": nodes, "edges": edges}
+
+        if viz_type == "timeline":
+            round_data = {}
+            for a in actions:
+                r = a.round
+                if r not in round_data:
+                    round_data[r] = {"round": r, "actions": 0}
+                round_data[r]["actions"] += 1
+            return {"type": "timeline", "events": list(round_data.values())}
+
+        return {"error": f"Unsupported viz_type: {viz_type}", "supported": ["network", "demographic_network", "timeline"]}
 
     # ------------------------------------------------------------------
     # Stop
@@ -226,18 +266,90 @@ class DocumentSimEngine(SimulationEngine):
         legacy_sim_id = self._legacy_id(sim_id)
         if not legacy_sim_id:
             raise ValueError(f"No legacy simulation found for {sim_id}")
-        return {
+
+        from ...utils.llm_client import LLMClient
+        llm = LLMClient()
+
+        actions = self.get_actions(sim_id)
+        unified = SimulationStore.get(sim_id)
+        config = unified.config if unified else {}
+
+        action_summary = ""
+        action_types = {}
+        for a in actions[:100]:
+            action_types[a.action_type] = action_types.get(a.action_type, 0) + 1
+        action_summary = f"Total actions: {len(actions)}. Types: {action_types}"
+
+        population = self._load_population(sim_id, config)
+
+        report = {
+            "status": "completed",
             "sim_id": sim_id,
             "legacy_sim_id": legacy_sim_id,
-            "message": "Use /api/report/generate with the legacy_sim_id to generate a report.",
+            "mode": "document",
+            "total_actions": len(actions),
+            "action_types": action_types,
+            "population_count": len(population),
+            "sections": [],
         }
+
+        try:
+            summary_resp = llm.chat(messages=[
+                {"role": "system", "content": "You are a simulation analyst. Generate a report summary."},
+                {"role": "user", "content": (
+                    f"Simulation report for document-based analysis:\n"
+                    f"- Config: {json.dumps(config, default=str)[:500]}\n"
+                    f"- {action_summary}\n"
+                    f"- Population: {len(population)} agents\n\n"
+                    "Write:\n1. An executive summary (2-3 paragraphs)\n2. Key findings\n3. 5 recommendations"
+                )},
+            ], temperature=0.5, max_tokens=1500)
+            report["executive_summary"] = summary_resp
+            report["summary"] = summary_resp[:500] if len(summary_resp) > 500 else summary_resp
+        except Exception:
+            report["executive_summary"] = "Report summary generation unavailable."
+            report["summary"] = "Report summary generation unavailable."
+
+        data_dir = SimulationStore.get_data_dir(sim_id)
+        with open(os.path.join(data_dir, "report.json"), "w", encoding="utf-8") as f:
+            json.dump(report, f, ensure_ascii=False, indent=2)
+
+        return report
 
     # ------------------------------------------------------------------
     # Chat (not yet wired)
     # ------------------------------------------------------------------
 
     def chat(self, sim_id: str, message: str, history: list) -> str:
-        raise NotImplementedError("Chat is not yet connected for document engine")
+        """Chat about the simulation using an LLM."""
+        from ...utils.llm_client import LLMClient
+        llm = LLMClient()
+
+        unified = SimulationStore.get(sim_id)
+        config = unified.config if unified else {}
+
+        actions = self.get_actions(sim_id)
+        actions_summary = ""
+        if actions:
+            actions_summary = f"Total actions: {len(actions)}. "
+            action_types = {}
+            for a in actions[:50]:
+                action_types[a.action_type] = action_types.get(a.action_type, 0) + 1
+            actions_summary += f"Action types: {action_types}"
+
+        messages = [
+            {"role": "system", "content": (
+                "You are a simulation analyst. The user ran a document-based simulation. "
+                "Help them understand the results.\n\n"
+                f"Simulation config: {json.dumps(config, default=str)[:500]}\n"
+                f"Results: {actions_summary}"
+            )},
+        ]
+        for h in history:
+            messages.append({"role": h.get("role", "user"), "content": h.get("content", "")})
+        messages.append({"role": "user", "content": message})
+
+        return llm.chat(messages=messages, temperature=0.5, max_tokens=2048)
 
     # ------------------------------------------------------------------
     # Population retrieval helper

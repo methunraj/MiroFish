@@ -8,6 +8,10 @@ const VIZ_OPTIONS = [
   { id: "heatmap", label: "Sector Heatmap" },
   { id: "timeline", label: "Economic Timeline" },
   { id: "network", label: "Trade Network" },
+  { id: "social", label: "Social Feed", description: "Agent posts and reactions" },
+  { id: "opinion", label: "Public Opinion", description: "Sentiment analysis" },
+  { id: "factions", label: "Factions", description: "Group dynamics" },
+  { id: "live_feed", label: "Live Feed", description: "Real-time events" },
 ];
 
 const STATS = [

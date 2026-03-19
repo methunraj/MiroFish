@@ -8,6 +8,10 @@ const VIZ_OPTIONS = [
   { id: "timeline", label: "Launch Timeline" },
   { id: "heatmap", label: "Sentiment Heatmap" },
   { id: "sankey", label: "Channel Flow" },
+  { id: "social", label: "Social Feed", description: "Agent posts and reactions" },
+  { id: "opinion", label: "Public Opinion", description: "Sentiment analysis" },
+  { id: "factions", label: "Factions", description: "Group dynamics" },
+  { id: "live_feed", label: "Live Feed", description: "Real-time events" },
 ];
 
 const STATS = [

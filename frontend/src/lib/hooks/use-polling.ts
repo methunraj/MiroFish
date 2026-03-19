@@ -11,7 +11,7 @@ interface UsePollingOptions<T> {
 
 export function usePolling<T>({
   fetcher,
-  interval = 2000,
+  interval = 3000,
   enabled = true,
   onData,
   onError,
@@ -20,9 +20,12 @@ export function usePolling<T>({
   const [loading, setLoading] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const mountedRef = useRef(true);
+  const inflight = useRef(false);
 
   const poll = useCallback(async () => {
-    if (!mountedRef.current) return;
+    if (!mountedRef.current || inflight.current) return;
+    if (typeof document !== "undefined" && document.hidden) return;
+    inflight.current = true;
     setLoading(true);
     try {
       const result = await fetcher();
@@ -32,6 +35,7 @@ export function usePolling<T>({
     } catch (err) {
       onError?.(err);
     } finally {
+      inflight.current = false;
       if (mountedRef.current) setLoading(false);
     }
   }, [fetcher, onData, onError]);
@@ -40,7 +44,8 @@ export function usePolling<T>({
     mountedRef.current = true;
     if (!enabled) return;
     poll();
-    timerRef.current = setInterval(poll, interval);
+    const safeInterval = Math.max(interval, 2000);
+    timerRef.current = setInterval(poll, safeInterval);
     return () => {
       mountedRef.current = false;
       clearInterval(timerRef.current);

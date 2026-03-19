@@ -12,6 +12,8 @@ const NAV_ITEMS = [
   { icon: "◎", label: "MARKET SIM", href: "/prompt-sim" },
   { icon: "▣", label: "PRODUCT SIM", href: "/product-sim" },
   { icon: "♦", label: "ECONOMY SIM", href: "/economy-sim" },
+  { icon: "⚙", label: "WORKBENCH", href: "/workbench" },
+  { icon: "◷", label: "HISTORY", href: "/history" },
 ];
 
 export function PixelSidebar() {

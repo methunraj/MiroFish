@@ -17,20 +17,86 @@ from ..simulation_framework import (
     AgentPersona,
     Action,
 )
+from .social_mixin import SocialSimulationMixin
 from ...models.simulation_base import SimulationStore
 from ...utils.llm_client import LLMClient
+from ...utils.image_client import get_image_client
 from ...utils.logger import get_logger
+from ...models.graph_db import get_db_session
+from ...models.simulation_db import AgentRecord, SimulationRecord, SimulationEvent
 
 logger = get_logger("parallelworld.engines.prompt")
 
 _stop_flags: dict[str, bool] = {}
 
 
-class PromptSimEngine(SimulationEngine):
+class PromptSimEngine(SocialSimulationMixin, SimulationEngine):
     """Market-analysis engine driven entirely by LLM prompts."""
 
     def __init__(self):
         self.llm = LLMClient()
+
+    # ------------------------------------------------------------------
+    # Batched population generation
+    # ------------------------------------------------------------------
+
+    def _batched_generate_population(self, idea: str, pop_size: int) -> list[dict]:
+        """Generate agents in batches to reliably hit the target count."""
+        BATCH_SIZE = 12
+        all_agents: list[dict] = []
+        max_retries = 5
+        retry = 0
+
+        while len(all_agents) < pop_size and retry < max_retries:
+            needed = min(BATCH_SIZE, pop_size - len(all_agents))
+            existing_names = [a.get("name", "") for a in all_agents]
+            avoid_text = ""
+            if existing_names:
+                avoid_text = f"\nDo NOT reuse these names: {', '.join(existing_names[-20:])}\n"
+
+            messages = [
+                {"role": "system", "content": (
+                    "You are a market research expert. Generate diverse consumer personas "
+                    "for evaluating a business idea. Return valid JSON with a single key "
+                    '"agents" containing a list of persona objects.'
+                )},
+                {"role": "user", "content": (
+                    f"Business idea: {idea}\n\n"
+                    f"Generate exactly {needed} diverse consumer personas stratified by age "
+                    "group (18-25, 26-35, 36-50, 51-65, 65+), income level (low/medium/high), "
+                    "occupation variety, and personality type (analytical/expressive/"
+                    f"driver/amiable).{avoid_text}\n"
+                    "Each persona must have:\n"
+                    '- "name": full name\n'
+                    '- "age": integer\n'
+                    '- "gender": string\n'
+                    '- "income_level": low/medium/high\n'
+                    '- "annual_income": integer estimate\n'
+                    '- "occupation": string\n'
+                    '- "education": string\n'
+                    '- "personality_type": analytical/expressive/driver/amiable\n'
+                    '- "interests": list of strings\n'
+                    '- "tech_savviness": 1-10\n'
+                    '- "bio": one-sentence background\n'
+                    "Return ONLY the JSON."
+                )},
+            ]
+
+            try:
+                result = self.llm.chat_json(messages=messages, temperature=0.85, max_tokens=12000)
+                batch = result.get("agents", [])
+                name_set = {a.get("name", "").lower() for a in all_agents}
+                for a in batch:
+                    if a.get("name", "").lower() not in name_set:
+                        all_agents.append(a)
+                        name_set.add(a.get("name", "").lower())
+                logger.info(f"Batch {retry+1}: got {len(batch)} agents, total {len(all_agents)}/{pop_size}")
+            except Exception as exc:
+                logger.warning(f"Batch generation retry {retry}: {exc}")
+
+            retry += 1
+
+        return all_agents[:pop_size]
 
     # ------------------------------------------------------------------
     # Population
@@ -49,35 +115,7 @@ class PromptSimEngine(SimulationEngine):
                 idea = config.get("idea", config.get("business_idea", config.get("prompt", "")))
                 pop_size = config.get("population_size", 20)
 
-                messages = [
-                    {"role": "system", "content": (
-                        "You are a market research expert. Generate diverse consumer personas "
-                        "for evaluating a business idea. Return valid JSON with a single key "
-                        '"agents" containing a list of persona objects.'
-                    )},
-                    {"role": "user", "content": (
-                        f"Business idea: {idea}\n\n"
-                        f"Generate {pop_size} diverse consumer personas stratified by age group "
-                        "(18-25, 26-35, 36-50, 51-65, 65+), income level (low/medium/high), "
-                        "occupation variety, and personality type (analytical/expressive/"
-                        "driver/amiable). Each persona must have:\n"
-                        '- "name": full name\n'
-                        '- "age": integer\n'
-                        '- "gender": string\n'
-                        '- "income_level": low/medium/high\n'
-                        '- "annual_income": integer estimate\n'
-                        '- "occupation": string\n'
-                        '- "education": string\n'
-                        '- "personality_type": analytical/expressive/driver/amiable\n'
-                        '- "interests": list of strings\n'
-                        '- "tech_savviness": 1-10\n'
-                        '- "bio": one-sentence background\n'
-                        "Return ONLY the JSON."
-                    )},
-                ]
-
-                result = self.llm.chat_json(messages=messages, temperature=0.8, max_tokens=8192)
-                agents_raw = result.get("agents", [])
+                agents_raw = self._batched_generate_population(idea, pop_size)
 
                 personas: list[AgentPersona] = []
                 for i, a in enumerate(agents_raw):
@@ -105,6 +143,39 @@ class PromptSimEngine(SimulationEngine):
                 data_dir = SimulationStore.get_data_dir(sim_id)
                 with open(os.path.join(data_dir, "population.json"), "w", encoding="utf-8") as f:
                     json.dump([_persona_to_dict(p) for p in personas], f, ensure_ascii=False, indent=2)
+
+                # Save agents to DB and generate portraits
+                try:
+                    image_client = get_image_client()
+                    agent_dicts = [{"id": p.id, "name": p.name, "demographics": p.demographics, "personality": p.personality} for p in personas]
+                    portrait_map = image_client.generate_portraits_batch(agent_dicts, max_workers=3)
+
+                    with get_db_session() as session:
+                        existing = session.query(SimulationRecord).filter_by(id=sim_id).first()
+                        if not existing:
+                            sim_rec = SimulationRecord(
+                                id=sim_id, mode="prompt",
+                                name=config.get("name", "Market Analysis"),
+                                status="generating_population",
+                                config=config,
+                            )
+                            session.add(sim_rec)
+                            session.flush()
+
+                        for p in personas:
+                            p.portrait_url = portrait_map.get(p.id, "")
+                            agent_rec = AgentRecord(
+                                id=p.id, sim_id=sim_id,
+                                name=p.name, role=p.role,
+                                demographics=p.demographics,
+                                personality=p.personality,
+                                portrait_url=p.portrait_url,
+                                activity_level=0.3 + __import__('random').random() * 0.5,
+                                bio=p.metadata.get("bio", ""),
+                            )
+                            session.add(agent_rec)
+                except Exception as portrait_exc:
+                    logger.warning(f"[{sim_id}] Portrait/DB save failed (non-fatal): {portrait_exc}")
 
                 SimulationStore.update_status(
                     sim_id, SimStatus.PENDING, population_count=len(personas),
@@ -141,6 +212,9 @@ class PromptSimEngine(SimulationEngine):
         SimulationStore.update_status(sim_id, SimStatus.RUNNING)
         _stop_flags[sim_id] = False
         idea = config.get("idea", config.get("business_idea", config.get("prompt", "")))
+        config.setdefault("total_simulation_hours", 4)
+        config.setdefault("max_rounds", 8)
+        config.setdefault("minutes_per_round", 30)
 
         def _bg():
             resp_path = os.path.join(data_dir, "responses.jsonl")
@@ -208,8 +282,29 @@ class PromptSimEngine(SimulationEngine):
                         count += 1
                         SimulationStore.update_status(sim_id, SimStatus.RUNNING, actions_count=count)
 
-                SimulationStore.update_status(sim_id, SimStatus.COMPLETED, actions_count=count)
-                logger.info(f"[{sim_id}] Simulation completed with {count} responses")
+                logger.info(f"[{sim_id}] Evaluation complete with {count} responses, starting multi-round social simulation...")
+
+                SimulationStore.update_status(
+                    sim_id, SimStatus.RUNNING,
+                    actions_count=count, phase="social_simulation",
+                    total_rounds=config.get("max_rounds", 8),
+                )
+
+                try:
+                    all_responses = []
+                    with open(resp_path, "r", encoding="utf-8") as fin:
+                        for line in fin:
+                            line = line.strip()
+                            if line:
+                                try:
+                                    all_responses.append(json.loads(line))
+                                except json.JSONDecodeError:
+                                    continue
+                    self.run_simulation_rounds(sim_id, config, all_responses)
+                except Exception as social_exc:
+                    logger.warning(f"[{sim_id}] Multi-round social sim failed (non-fatal): {social_exc}")
+
+                SimulationStore.update_status(sim_id, SimStatus.COMPLETED, actions_count=count, progress=100)
 
             except Exception as exc:
                 logger.error(f"[{sim_id}] Simulation run failed: {exc}")
@@ -248,7 +343,7 @@ class PromptSimEngine(SimulationEngine):
                     "sentiment": r.get("reaction", "neutral"),
                     "comment": r.get("reasoning", "")[:120],
                 }
-                for r in responses[-20:]
+                for r in responses
             ]
         else:
             base["stats"] = {"viability": 0, "avg_interest": 0, "responses": 0}
@@ -469,6 +564,24 @@ class PromptSimEngine(SimulationEngine):
             },
             "generated_at": datetime.now().isoformat(),
         }
+
+        try:
+            summary_resp = self.llm.chat(messages=[
+                {"role": "system", "content": "You are a market research analyst. Write a concise executive summary and actionable recommendations based on simulation results."},
+                {"role": "user", "content": (
+                    f"Simulation results for a business idea evaluation:\n"
+                    f"- Total respondents: {n}\n"
+                    f"- Viability score: {viability_score}/100\n"
+                    f"- Average interest: {round(avg_interest, 2)}/10\n"
+                    f"- Reaction distribution: {dict(reaction_counts)}\n"
+                    f"- Top concerns: {[c for c, _ in top_concerns[:5]]}\n"
+                    f"- Price sensitivity: avg WTP=${report['price_sensitivity']['avg_wtp']}\n\n"
+                    "Write:\n1. An executive summary (2-3 paragraphs)\n2. 5 actionable recommendations"
+                )},
+            ], temperature=0.5, max_tokens=1500)
+            report["executive_summary"] = summary_resp
+        except Exception:
+            report["executive_summary"] = "Executive summary generation failed."
 
         data_dir = SimulationStore.get_data_dir(sim_id)
         with open(os.path.join(data_dir, "report.json"), "w", encoding="utf-8") as f:

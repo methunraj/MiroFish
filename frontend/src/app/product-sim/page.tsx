@@ -49,6 +49,18 @@ const FIELDS: FieldConfig[] = [
     ],
   },
   {
+    name: "sim_preset",
+    label: "Simulation Mode",
+    type: "sim-preset",
+    defaultValue: "standard",
+    options: [
+      { value: "quick", label: "Quick", desc: "~15 agents, 4 rounds, 1hr sim", icon: "⚡" },
+      { value: "standard", label: "Standard", desc: "~50 agents, 12 rounds, 4hr sim", icon: "⚖️" },
+      { value: "deep", label: "Deep", desc: "~100 agents, 30 rounds, 12hr sim", icon: "🔬" },
+      { value: "auto", label: "Automatic", desc: "AI decides everything", icon: "🤖" },
+    ],
+  },
+  {
     name: "population_size",
     label: "Population Size",
     type: "slider",

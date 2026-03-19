@@ -18,9 +18,13 @@ from ..simulation_framework import (
     AgentPersona,
     Action,
 )
+from .social_mixin import SocialSimulationMixin
 from ...models.simulation_base import SimulationStore
 from ...utils.llm_client import LLMClient
+from ...utils.image_client import get_image_client
 from ...utils.logger import get_logger
+from ...models.graph_db import get_db_session
+from ...models.simulation_db import AgentRecord, SimulationRecord, SimulationEvent
 
 logger = get_logger("parallelworld.engines.product_launch")
 
@@ -38,11 +42,73 @@ AGENT_TYPES = {
 }
 
 
-class ProductLaunchEngine(SimulationEngine):
+class ProductLaunchEngine(SocialSimulationMixin, SimulationEngine):
     """Multi-phase product launch simulation."""
 
     def __init__(self):
         self.llm = LLMClient()
+
+    # ------------------------------------------------------------------
+    # Batched population generation
+    # ------------------------------------------------------------------
+
+    def _batched_generate_population(self, product: str, pop_size: int) -> list[dict]:
+        BATCH_SIZE = 12
+        all_agents: list[dict] = []
+        max_retries = 5
+        retry = 0
+
+        while len(all_agents) < pop_size and retry < max_retries:
+            needed = min(BATCH_SIZE, pop_size - len(all_agents))
+            existing_names = [a.get("name", "") for a in all_agents]
+            avoid_text = ""
+            if existing_names:
+                avoid_text = f"\nDo NOT reuse these names: {', '.join(existing_names[-20:])}\n"
+
+            messages = [
+                {"role": "system", "content": (
+                    "You are a market simulation researcher. Generate diverse agents "
+                    "for a product launch simulation. Return valid JSON with key "
+                    '"agents" containing a list of persona objects.'
+                )},
+                {"role": "user", "content": (
+                    f"Product: {product}\n\n"
+                    f"Generate exactly {needed} agents across these types:\n"
+                    "- early_adopter (~25%): tech-forward, trend-seeking consumers\n"
+                    "- mainstream (~35%): average consumers needing social proof\n"
+                    "- laggard (~15%): change-resistant consumers\n"
+                    "- competitor (~10%): competing companies in the space\n"
+                    "- media (~10%): journalists, bloggers, influencers\n"
+                    f"- investor (~5%): VCs, analysts, financial stakeholders\n{avoid_text}\n"
+                    "Each persona needs:\n"
+                    '- "name": full name or company name\n'
+                    '- "agent_type": one of the types above\n'
+                    '- "age": integer (for people) or years_established (for companies)\n'
+                    '- "income_level": low/medium/high\n'
+                    '- "tech_savviness": 1-10\n'
+                    '- "brand_loyalty": 1-10 (loyalty to existing solutions)\n'
+                    '- "influence_reach": 1-10 (social influence)\n'
+                    '- "segment": specific market segment\n'
+                    '- "bio": one-sentence background\n'
+                    "Return ONLY the JSON."
+                )},
+            ]
+
+            try:
+                result = self.llm.chat_json(messages=messages, temperature=0.85, max_tokens=12000)
+                batch = result.get("agents", [])
+                name_set = {a.get("name", "").lower() for a in all_agents}
+                for a in batch:
+                    if a.get("name", "").lower() not in name_set:
+                        all_agents.append(a)
+                        name_set.add(a.get("name", "").lower())
+                logger.info(f"Product batch {retry+1}: got {len(batch)}, total {len(all_agents)}/{pop_size}")
+            except Exception as exc:
+                logger.warning(f"Product batch retry {retry}: {exc}")
+
+            retry += 1
+
+        return all_agents[:pop_size]
 
     # ------------------------------------------------------------------
     # Population
@@ -61,37 +127,7 @@ class ProductLaunchEngine(SimulationEngine):
                 product = config.get("product_description", config.get("prompt", ""))
                 pop_size = config.get("population_size", 24)
 
-                messages = [
-                    {"role": "system", "content": (
-                        "You are a market simulation researcher. Generate diverse agents "
-                        "for a product launch simulation. Return valid JSON with key "
-                        '"agents" containing a list of persona objects.'
-                    )},
-                    {"role": "user", "content": (
-                        f"Product: {product}\n\n"
-                        f"Generate {pop_size} agents across these types:\n"
-                        "- early_adopter (~25%): tech-forward, trend-seeking consumers\n"
-                        "- mainstream (~35%): average consumers needing social proof\n"
-                        "- laggard (~15%): change-resistant consumers\n"
-                        "- competitor (~10%): competing companies in the space\n"
-                        "- media (~10%): journalists, bloggers, influencers\n"
-                        "- investor (~5%): VCs, analysts, financial stakeholders\n\n"
-                        "Each persona needs:\n"
-                        '- "name": full name or company name\n'
-                        '- "agent_type": one of the types above\n'
-                        '- "age": integer (for people) or years_established (for companies)\n'
-                        '- "income_level": low/medium/high\n'
-                        '- "tech_savviness": 1-10\n'
-                        '- "brand_loyalty": 1-10 (loyalty to existing solutions)\n'
-                        '- "influence_reach": 1-10 (social influence)\n'
-                        '- "segment": specific market segment\n'
-                        '- "bio": one-sentence background\n'
-                        "Return ONLY the JSON."
-                    )},
-                ]
-
-                result = self.llm.chat_json(messages=messages, temperature=0.8, max_tokens=8192)
-                agents_raw = result.get("agents", [])
+                agents_raw = self._batched_generate_population(product, pop_size)
 
                 personas: list[AgentPersona] = []
                 for i, a in enumerate(agents_raw):
@@ -119,6 +155,39 @@ class ProductLaunchEngine(SimulationEngine):
                 with open(os.path.join(data_dir, "population.json"), "w", encoding="utf-8") as f:
                     json.dump([_persona_to_dict(p) for p in personas], f, ensure_ascii=False, indent=2)
 
+                # Save agents to DB and generate portraits
+                try:
+                    image_client = get_image_client()
+                    agent_dicts = [{"id": p.id, "name": p.name, "demographics": p.demographics, "personality": p.personality} for p in personas]
+                    portrait_map = image_client.generate_portraits_batch(agent_dicts, max_workers=3)
+
+                    with get_db_session() as session:
+                        existing = session.query(SimulationRecord).filter_by(id=sim_id).first()
+                        if not existing:
+                            sim_rec = SimulationRecord(
+                                id=sim_id, mode="product",
+                                name=config.get("name", "Product Launch"),
+                                status="generating_population",
+                                config=config,
+                            )
+                            session.add(sim_rec)
+                            session.flush()
+
+                        for p in personas:
+                            p.portrait_url = portrait_map.get(p.id, "")
+                            agent_rec = AgentRecord(
+                                id=p.id, sim_id=sim_id,
+                                name=p.name, role=p.role,
+                                demographics=p.demographics,
+                                personality=p.personality,
+                                portrait_url=p.portrait_url,
+                                activity_level=0.3 + __import__('random').random() * 0.5,
+                                bio=p.metadata.get("bio", ""),
+                            )
+                            session.add(agent_rec)
+                except Exception as portrait_exc:
+                    logger.warning(f"[{sim_id}] Portrait/DB save failed (non-fatal): {portrait_exc}")
+
                 SimulationStore.update_status(sim_id, SimStatus.PENDING, population_count=len(personas))
                 logger.info(f"[{sim_id}] Generated {len(personas)} product launch agents")
 
@@ -143,6 +212,9 @@ class ProductLaunchEngine(SimulationEngine):
             population = _load_population_personas(data_dir)
 
         product = config.get("product_description", config.get("prompt", ""))
+        config.setdefault("total_simulation_hours", 4)
+        config.setdefault("max_rounds", 8)
+        config.setdefault("minutes_per_round", 30)
         SimulationStore.update_status(sim_id, SimStatus.RUNNING)
         _stop_flags[sim_id] = False
 
@@ -222,8 +294,21 @@ class ProductLaunchEngine(SimulationEngine):
                             count += 1
                             SimulationStore.update_status(sim_id, SimStatus.RUNNING, actions_count=count)
 
-                SimulationStore.update_status(sim_id, SimStatus.COMPLETED, actions_count=count)
-                logger.info(f"[{sim_id}] Product launch sim completed: {count} actions over {len(LAUNCH_PHASES)} phases")
+                logger.info(f"[{sim_id}] Product launch phases complete: {count} actions, starting multi-round social simulation...")
+
+                SimulationStore.update_status(
+                    sim_id, SimStatus.RUNNING,
+                    actions_count=count, phase="social_simulation",
+                    total_rounds=config.get("max_rounds", 8),
+                )
+
+                try:
+                    all_responses = _load_responses(sim_id)
+                    self.run_simulation_rounds(sim_id, config, all_responses)
+                except Exception as social_exc:
+                    logger.warning(f"[{sim_id}] Multi-round social sim failed (non-fatal): {social_exc}")
+
+                SimulationStore.update_status(sim_id, SimStatus.COMPLETED, actions_count=count, progress=100)
 
             except Exception as exc:
                 logger.error(f"[{sim_id}] Product launch sim failed: {exc}")
@@ -285,32 +370,35 @@ class ProductLaunchEngine(SimulationEngine):
 
     def _viz_network(self, sim_id: str, responses: list[dict]) -> dict:
         """Build demographic network from population + response data."""
-        population = self.get_population(sim_id)
+        sim = SimulationStore.get(sim_id)
+        config = sim.config if sim else {}
+        population = self.get_population(sim_id, config)
         resp_map = {r.get("agent_id", ""): r for r in responses}
         nodes = []
         for p in population:
-            aid = p.get("id", "")
+            aid = p.id
             r = resp_map.get(aid, {})
+            demos = p.demographics or {}
             nodes.append({
                 "id": aid,
-                "name": p.get("name", "Agent"),
+                "name": p.name,
                 "activity": r.get("rating", 5) / 10 if r else 0.5,
-                "group": p.get("demographics", {}).get("income_level", "unknown"),
+                "group": demos.get("income_level", p.role or "unknown"),
             })
 
         edges = []
         for i, a in enumerate(population):
             for b in population[i + 1:]:
                 shared = []
-                da = a.get("demographics", {})
-                db = b.get("demographics", {})
+                da = a.demographics or {}
+                db = b.demographics or {}
                 for key in ("age_group", "income_level", "occupation"):
                     if da.get(key) and da.get(key) == db.get(key):
                         shared.append(key)
                 if shared:
                     edges.append({
-                        "source": a.get("id", ""),
-                        "target": b.get("id", ""),
+                        "source": a.id,
+                        "target": b.id,
                         "shared": shared,
                         "weight": len(shared),
                         "type": shared[0],
@@ -427,6 +515,22 @@ class ProductLaunchEngine(SimulationEngine):
             },
             "generated_at": datetime.now().isoformat(),
         }
+
+        try:
+            funnel_str = ", ".join(f"{k}: {v}" for k, v in report["adoption_funnel"].items())
+            summary_resp = self.llm.chat(messages=[
+                {"role": "system", "content": "You are a product launch analyst. Write a concise executive summary and recommendations."},
+                {"role": "user", "content": (
+                    f"Product launch simulation results:\n"
+                    f"- Total actions across phases: {len(responses)}\n"
+                    f"- Adoption funnel: {funnel_str}\n"
+                    f"- Phase data: {json.dumps(phase_data, default=str)}\n\n"
+                    "Write:\n1. An executive summary (2-3 paragraphs)\n2. 5 actionable recommendations"
+                )},
+            ], temperature=0.5, max_tokens=1500)
+            report["executive_summary"] = summary_resp
+        except Exception:
+            report["executive_summary"] = "Executive summary generation failed."
 
         data_dir = SimulationStore.get_data_dir(sim_id)
         with open(os.path.join(data_dir, "report.json"), "w", encoding="utf-8") as f:

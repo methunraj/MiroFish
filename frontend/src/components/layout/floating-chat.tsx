@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAppStore } from "@/lib/store/app-store";
+import { simulationApi } from "@/lib/api/simulation";
 import { PixelButton } from "@/components/ui/pixel-button";
 import { PixelInput } from "@/components/ui/pixel-input";
 import { cn } from "@/lib/utils";
@@ -19,6 +20,7 @@ interface FloatingChatProps {
 export function FloatingChat({ onSend }: FloatingChatProps) {
   const open = useAppStore((s) => s.chatOpen);
   const setOpen = useAppStore((s) => s.setChatOpen);
+  const activeSimId = useAppStore((s) => s.activeSimId);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -28,15 +30,23 @@ export function FloatingChat({ onSend }: FloatingChatProps) {
     scrollRef.current?.scrollTo(0, scrollRef.current.scrollHeight);
   }, [messages]);
 
+  const defaultSend = useCallback(async (msg: string, history: Message[]): Promise<string> => {
+    if (!activeSimId) return "No active simulation. Navigate to a simulation to chat.";
+    const res = await simulationApi.chat(activeSimId, msg, history);
+    const d = res.data;
+    return d?.reply || d?.response || (typeof d === "string" ? d : "No response");
+  }, [activeSimId]);
+
   const send = async () => {
-    if (!input.trim() || !onSend) return;
+    const handler = onSend || defaultSend;
+    if (!input.trim()) return;
     const msg = input.trim();
     setInput("");
     const newMessages: Message[] = [...messages, { role: "user", content: msg }];
     setMessages(newMessages);
     setLoading(true);
     try {
-      const reply = await onSend(msg, newMessages);
+      const reply = await handler(msg, newMessages);
       setMessages((m) => [...m, { role: "assistant", content: reply }]);
     } catch {
       setMessages((m) => [

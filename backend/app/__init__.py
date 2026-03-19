@@ -76,10 +76,12 @@ def create_app(config_class=Config):
     
     # Register blueprints
     from .api import graph_bp, simulation_bp, report_bp, sim_unified_bp
+    from .api.workbench import workbench_bp
     app.register_blueprint(graph_bp, url_prefix='/api/graph')
     app.register_blueprint(simulation_bp, url_prefix='/api/simulation')
     app.register_blueprint(report_bp, url_prefix='/api/report')
     app.register_blueprint(sim_unified_bp, url_prefix='/api/sim')
+    app.register_blueprint(workbench_bp, url_prefix='/api/workbench')
     
     # Health check
     @app.route('/health')
@@ -96,7 +98,17 @@ def create_app(config_class=Config):
             return {'status': 'ok', 'service': 'Parallel World Backend', 'database': 'connected'}
         except Exception as e:
             return {'status': 'error', 'service': 'Parallel World Backend', 'database': 'disconnected', 'error': str(e)}, 503
-    
+
+    # Serve uploaded portraits as static files
+    import os as _os
+    portraits_dir = _os.path.join(_os.path.dirname(__file__), '../uploads/portraits')
+    _os.makedirs(portraits_dir, exist_ok=True)
+
+    @app.route('/uploads/portraits/<path:filename>')
+    def serve_portrait(filename):
+        from flask import send_from_directory
+        return send_from_directory(portraits_dir, filename)
+
     if should_log_startup:
         logger.info("Parallel World Backend started successfully")
     

@@ -20,6 +20,9 @@ export const simulationApi = {
   getReport: (id: string) => api.get(`/sim/${id}/report`),
   chat: (id: string, message: string, history: unknown[] = []) =>
     api.post(`/sim/${id}/chat`, { message, history }),
+  getInterviews: (id: string) => api.get(`/sim/${id}/interviews`),
+  autoConfig: (topic: string, mode: string) =>
+    api.post("/sim/auto-config", { topic, mode }),
   list: (limit = 50) => api.get("/sim/list", { params: { limit } }),
 
   /* legacy document-sim endpoints */

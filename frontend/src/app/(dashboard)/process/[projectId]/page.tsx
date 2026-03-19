@@ -17,6 +17,7 @@ import { graphApi } from "@/lib/api/graph";
 import { simulationApi } from "@/lib/api/simulation";
 import { cn } from "@/lib/utils";
 import { fadeUp, staggerContainer, staggerItem } from "@/lib/motion/presets";
+import { KnowledgeGraph } from "@/components/viz/knowledge-graph";
 
 type SubStep = "ontology" | "building" | "environment";
 
@@ -74,7 +75,9 @@ export default function ProcessPage() {
         graph_id: project.graph_id,
       });
       setSubStep("building");
-    } catch { /* ignore */ }
+    } catch (err) {
+      console.error("[Process] Graph build failed:", err);
+    }
   };
 
   const handleLaunchSim = async () => {
@@ -86,7 +89,9 @@ export default function ProcessPage() {
       });
       const simId = res.data?.simulation_id ?? res.data?.id ?? res.data;
       router.push(`/simulation/${simId}/run`);
-    } catch { /* ignore */ }
+    } catch (err) {
+      console.error("[Process] Simulation launch failed:", err);
+    }
     setLaunching(false);
   };
 
@@ -308,10 +313,16 @@ export default function ProcessPage() {
         title="Knowledge Graph"
         description="Interactive graph visualization"
       >
-        <div className="min-h-[300px] flex items-center justify-center">
-          <span className="font-[family-name:var(--font-pixel)] text-[10px] text-muted-foreground uppercase">
-            [ KNOWLEDGE GRAPH VISUALIZATION — PLACEHOLDER ]
-          </span>
+        <div className="min-h-[300px] w-full">
+          {project?.graph_id ? (
+            <KnowledgeGraph graphId={project.graph_id} className="min-h-[300px] w-full" />
+          ) : (
+            <div className="flex min-h-[300px] items-center justify-center">
+              <span className="font-[family-name:var(--font-pixel)] text-[10px] text-muted-foreground uppercase">
+                No graph id yet
+              </span>
+            </div>
+          )}
         </div>
       </PixelDialog>
     </div>

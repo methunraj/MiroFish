@@ -105,6 +105,12 @@ class Episode(Base):
     )
 
 
+# Import models that share this Base so their tables are created by init_db()
+# (imported at module level to register with Base.metadata)
+from . import simulation_db  # noqa: F401, E402
+from . import social_db  # noqa: F401, E402
+
+
 # Module-level engine and session factory
 _engine = None
 _session_factory = None
@@ -132,6 +138,9 @@ def _get_session_factory():
 def init_db():
     """Initialize database tables"""
     engine = _get_engine()
+    with engine.connect() as conn:
+        conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        conn.commit()
     Base.metadata.create_all(engine)
 
 

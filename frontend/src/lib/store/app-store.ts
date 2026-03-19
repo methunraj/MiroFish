@@ -28,6 +28,9 @@ interface AppState {
   chatOpen: boolean;
   setChatOpen: (v: boolean) => void;
 
+  activeSimId: string | null;
+  setActiveSimId: (id: string | null) => void;
+
   currentPhase: string;
   currentPhaseProgress: number;
   setPhase: (name: string, progress: number) => void;
@@ -46,6 +49,9 @@ export const useAppStore = create<AppState>((set) => ({
 
   chatOpen: false,
   setChatOpen: (v) => set({ chatOpen: v }),
+
+  activeSimId: null,
+  setActiveSimId: (id) => set({ activeSimId: id }),
 
   currentPhase: "",
   currentPhaseProgress: 0,
